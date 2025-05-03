@@ -1,0 +1,70 @@
+
+# MQTT Settings. Make sure to use the same MQTT instance as the one Home Assistant is pointing to. You can use environment variables like the ones here all accross the file.
+mqtt:
+  host: ${HA_MQTT_HOST}
+  port: ${HA_MQTT_PORT}
+  username: ${HA_MQTT_USERNAME}
+  password: ${HA_MQTT_PASSWORD}
+
+# Section for the default device configuration and any other Home Assistant Related configs
+hass:
+  device_name: Hass Linux Companion
+  device_id: hass_linux_companion
+
+# To register additional devices for better segregation in Home assistant
+devices:
+  naga_epic_chroma:
+    name: Naga Epic Chroma
+
+# Entities Configurations:
+#   Here you can use the devices you created in the previous section to register entities to it and have them show as separate devices in Home assistant. For that, all you need to do is provide the same device id under a device key
+entities:
+  # Sensors can be either numeric or string values. Numeric values will only show in a line graph if they are provided with a unit of measurement
+  # Types of Sensors available:
+  #   - Command Sensor
+  sensors:
+    - name: Random Int
+      id: random_int
+      type: command
+      command: "echo $((1 + $RANDOM % 10))"
+      polling_rate: 1
+    - name: Companion Name
+      id: companion_name
+      type: command
+      command: "echo my name is companion"
+      polling_rate: 0.1
+      # Parsers can be used to change the response of your command to suit your needs. Parsers available are:
+      #   - bool: Will attempt to convert the value provided to boolean
+      #   - int: Will convert the value to int
+      #   - float: Will convert the value to float
+      #   - string: Will convert the value to string
+      #   - regex: Will extract a group from the input string. If no group is provided, the whole match is extracted
+      #   - compare: Will compare the value provided with a comparison_value preconfigured and return True or False depending on the result
+      parse:
+        - type: regex
+          regex: "my name is (.*)"
+          group: 1
+    # This is a more real example. I could have used regex here as well to extract instead of sed
+    - name: Naga Epic Chroma Battery
+      id: naga_epic_chroma_battery
+      type: command
+      command: "polychromatic-cli -n \"Razer Naga Epic Chroma Dock\" --list-options | grep Battery | sed 's/Battery//;s/%//;s/ //g'"
+      device: naga_epic_chroma
+      polling_rate: 0.01667
+      device_class: battery
+      unit_of_measurement: "%"
+      icon: "mdi:battery"
+  # Switches can turn on and off. You need to provide them with what they need to do on both occasions and optionally, you can provide a binary sensor that will be used to determine their state
+  switches:
+    - name: Echo_boolean
+      id: echo_boolean
+      command_on: "echo True > /tmp/ha_companion"
+      command_off: "echo False > /tmp/ha_companion"
+      # Binary Sensors always need to be fed a boolean value, so the parse of type bool is mandatory as a lest step on the parse chain
+      binary_sensor:
+        type: command
+        command: "cat /tmp/ha_companion"
+        polling_rate: 1
+        parse:
+          - type: bool
+      
