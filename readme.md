@@ -1,3 +1,39 @@
+# A Home Assistant Companion
+
+Hass Companion was created initially to overcome the lack of solutions like [HASS.Agent](https://www.hass-agent.io/2.0/) for Linux. It is a lightweight alternative that can be easily extended to support more features. There is currently no reason it would not work on Windows but Hass.Agent probably provides more features and a friendlier experience out-of-the-box. Hass Companion is designed to be a simple and effective solution for Linux users.
+# Features
+
+- **MQTT Discovery**: Hass Companion communicates with Home Assistant via MQTT. Discovery works out of the box without additional setup as long as you have MQTT integration configured in HA
+- **Switches**:
+  - **Command**: Execute a command when switch turns on and another when it turns off. Optionally, you can also monitor a third command to check the status of the switch.
+- **Sensors**:
+  - **Command**: Execute a command and return the output as sensor value.
+- **Binary Sensors**:
+  - **Command**: Execute a command and return the output as binary sensor value.
+
+
+# Todo
+- **Notifications**
+- **Selects**
+- **Lights**: Possible integration with OpenRGB
+- **Buttons**
+- **System Monitoring**
+  - **CPU Metrics**
+  - **Memory Metrics**
+  - **Disk Metrics**
+  - **Network Metrics**
+  - **GPU Metrics**
+  - **Application Monitoring**
+  - **Webcam**
+  - **Microphone**: Mostly whether it is being used or not and by which application
+- **Custom Scripts**: ability to write python scripts to extend functionality without changing the main code
+- **Security Improvements**
+- **Documentation Improvements**
+
+
+
+
+
 # Configuration
 
 ## MQTT Settings
