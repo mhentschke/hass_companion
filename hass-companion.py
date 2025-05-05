@@ -1,6 +1,17 @@
 
 from ha_mqtt_discoverable import Settings as HASettings
-from ha_mqtt_discoverable.sensors import Sensor as HASensor, SensorInfo as HASensorInfo, DeviceInfo as HADeviceInfo, Switch as HASwitch, SwitchInfo as HASwitchInfo, ButtonInfo as HAButtonInfo, Button as HAButton
+from ha_mqtt_discoverable.sensors import (
+    Sensor as HASensor, 
+    SensorInfo as HASensorInfo, 
+    DeviceInfo as HADeviceInfo, 
+    Switch as HASwitch, 
+    SwitchInfo as HASwitchInfo, 
+    ButtonInfo as HAButtonInfo, 
+    Button as HAButton,
+    BinarySensor as HABinarySensor,
+    BinarySensorInfo as HABinarySensorInfo, 
+)
+
 import paho.mqtt.client as mqtt_client
 import threading
 import subprocess
@@ -265,6 +276,7 @@ def shutdown_handler(sig, frame):
     print("All Done. Exiting!")
     sys.exit(0)
 
+
 def get_entity_info(entity_config):
     if "device" in entity_config:
         device = ha_devices[entity_config["device"]]
@@ -278,6 +290,19 @@ def get_entity_info(entity_config):
         "icon": entity_config.get("icon")
     }
     return entity_info_kwargs
+
+def create_binary_sensor(entity_config, mqtt_settings):
+    entity_info_kwargs = get_entity_info(entity_config)
+    entity_info_kwargs.update({ 
+        "device_class": entity_config.get("class"),
+    })
+    ha_entity_info = HABinarySensorInfo(**entity_info_kwargs)
+
+    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+    ha_entity = HABinarySensor(ha_settings)
+    entity = load_sensor(entity_config, ha_entity.update_state, binary = True)
+    return entity, ha_entity
+
 
 def create_button(entity_config, mqtt_settings):
     entity_info_kwargs = get_entity_info(entity_config)
@@ -320,7 +345,8 @@ def create_entity(entity_type, entity_config, mqtt_settings):
         ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
         ha_entity = HASensor(ha_settings)
         entity = load_sensor(entity_config, ha_entity.set_state)
-
+    elif entity_type == "binary_sensor":
+        entity, ha_entity = create_binary_sensor(entity_config, mqtt_settings)
     elif entity_type == "switch":
         ha_entity_info = HASwitchInfo(**entity_info_kwargs)
 
@@ -390,6 +416,7 @@ if __name__ == "__main__":
 
 
     sensors, ha_sensors = load_entities("sensor", config.config_dict["entities"].get("sensors", []), mqtt_settings)
+    binary_sensors, ha_binary_sensors = load_entities("binary_sensor", config.config_dict["entities"].get("binary_sensors", []), mqtt_settings)
     switches, ha_switches = load_entities("switch", config.config_dict["entities"].get("switches", []), mqtt_settings)
     buttons, ha_buttons = load_entities("button", config.config_dict["entities"].get("buttons", []), mqtt_settings)
 
