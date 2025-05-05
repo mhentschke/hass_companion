@@ -1,6 +1,7 @@
 
 from ha_mqtt_discoverable import Settings as HASettings
-from ha_mqtt_discoverable.sensors import Sensor as HASensor, SensorInfo as HASensorInfo, DeviceInfo as HADeviceInfo, Switch as HASwitch, SwitchInfo as HASwitchInfo
+from ha_mqtt_discoverable.sensors import Sensor as HASensor, SensorInfo as HASensorInfo, DeviceInfo as HADeviceInfo, Switch as HASwitch, SwitchInfo as HASwitchInfo, ButtonInfo as HAButtonInfo, Button as HAButton
+import paho.mqtt.client as mqtt_client
 import threading
 import subprocess
 import yaml
@@ -197,6 +198,15 @@ class Switch:
     def stop(self):
         self.sensor.stop()
 
+class Button:
+    def __init__(self, command, shell):
+        self.command = command
+        self.shell = shell
+
+    def press(self):
+        subprocess.run([self.shell, "-c", self.command], stdout=subprocess.PIPE).stdout.decode("utf-8")
+
+
 '''class Select:
     def __init__(self, command_template, shell, state_mapping = {}, sensor = None):
         self.command_template = command_template
@@ -255,6 +265,35 @@ def shutdown_handler(sig, frame):
     print("All Done. Exiting!")
     sys.exit(0)
 
+def get_entity_info(entity_config):
+    if "device" in entity_config:
+        device = ha_devices[entity_config["device"]]
+    else:
+        device = ha_device
+
+    entity_info_kwargs = {
+        "name": entity_config["name"], 
+        "unique_id": entity_config.get("id", entity_config["name"]),
+        "device": device,
+        "icon": entity_config.get("icon")
+    }
+    return entity_info_kwargs
+
+def create_button(entity_config, mqtt_settings):
+    entity_info_kwargs = get_entity_info(entity_config)
+    ha_entity_info = HAButtonInfo(**entity_info_kwargs)
+        
+    button_command = entity_config.get("command")
+    button_shell = entity_config.get("shell", "bash")
+    entity = Button(button_command, button_shell)
+
+    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+    def button_press_wrapper(client: Client, user_data, message: MQTTMessage):
+        entity.press()
+    ha_entity = HAButton(ha_settings, button_press_wrapper)
+    ha_entity.write_config()
+    return entity, ha_entity
+
 def create_entity(entity_type, entity_config, mqtt_settings):
     if "device" in entity_config:
         device = ha_devices[entity_config["device"]]
@@ -263,7 +302,6 @@ def create_entity(entity_type, entity_config, mqtt_settings):
 
     entity_info_kwargs = {
         "name": entity_config["name"], 
-        "unit_of_measurement": entity_config.get("unit_of_measurement"),
         "unique_id": entity_config.get("id", entity_config["name"]),
         "device": device,
         "icon": entity_config.get("icon")
@@ -274,6 +312,7 @@ def create_entity(entity_type, entity_config, mqtt_settings):
 
     if entity_type == "sensor":
         entity_info_kwargs.update({ 
+            "unit_of_measurement": entity_config.get("unit_of_measurement"),
             "device_class": entity_config.get("class"),
         })
         ha_entity_info = HASensorInfo(**entity_info_kwargs)
@@ -312,6 +351,9 @@ def create_entity(entity_type, entity_config, mqtt_settings):
             else:
                 ha_entity.off()
         entity.sensor.result_callback = ha_set_callback
+    elif entity_type == "button":
+        entity, ha_entity = create_button(entity_config, mqtt_settings)
+
     return entity, ha_entity
 
 def load_entities(entity_type, entity_configs, mqtt_settings):
@@ -349,6 +391,7 @@ if __name__ == "__main__":
 
     sensors, ha_sensors = load_entities("sensor", config.config_dict["entities"].get("sensors", []), mqtt_settings)
     switches, ha_switches = load_entities("switch", config.config_dict["entities"].get("switches", []), mqtt_settings)
+    buttons, ha_buttons = load_entities("button", config.config_dict["entities"].get("buttons", []), mqtt_settings)
 
 
     while True:

@@ -67,4 +67,3 @@ entities:
         polling_rate: 1
         parse:
           - type: bool
-      

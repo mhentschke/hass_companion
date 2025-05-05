@@ -10,6 +10,8 @@ Hass Companion was created initially to overcome the lack of solutions like [HAS
   - **Command**: Execute a command and return the output as sensor value.
 - **Binary Sensors**:
   - **Command**: Execute a command and return the output as binary sensor value.
+- **Buttons**:
+  - **Command**: Execute a command.
 
 
 # Install
@@ -59,7 +61,6 @@ TODO
 - **Notifications**
 - **Selects**
 - **Lights**: Possible integration with OpenRGB
-- **Buttons**
 - **System Monitoring**
   - **CPU Metrics**
   - **Memory Metrics**
@@ -186,6 +187,18 @@ entities:
         polling_rate: 1 # Polling rate in 1/seconds
         parse: # Mandatory conversion to bool
           - type: "bool"
+```
+
+### Buttons
+A button can only be pressed and has no intrinsid state. Its purpose is to do something without monitoring the effect of that action.
+
+```yaml
+entities:
+  buttons:
+    - name: Button Name
+      id: button_id
+      command: "some command to be executed"
+      shell: "bash" # currently supported shells: bash
 ```
 
 
