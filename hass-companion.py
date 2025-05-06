@@ -10,6 +10,8 @@ from ha_mqtt_discoverable.sensors import (
     Button as HAButton,
     BinarySensor as HABinarySensor,
     BinarySensorInfo as HABinarySensorInfo, 
+    Select as HASelect,
+    SelectInfo as HASelectInfo, 
 )
 
 import paho.mqtt.client as mqtt_client
@@ -24,6 +26,7 @@ import os
 from typing import Any
 from paho.mqtt.client import Client, MQTTMessage
 from dotenv import load_dotenv 
+from bidict import bidict
 load_dotenv() 
 
 _var_matcher = re.compile(r"\${([^}^{]+)}")
@@ -115,6 +118,13 @@ class RegexResultParser(ResultParser):
         else:
             return None
 
+class StateMapResultParser(ResultParser):
+    def __init__(self, mapping):
+        self.mapping = mapping
+    def parse(self, text):
+        return self.mapping.get(text, text)
+
+
 class Sensor():
     def __init__(self, result_callback):
         self.result_callback = result_callback
@@ -173,11 +183,13 @@ class CommandSensor(Sensor):
         if isinstance(result, str): # remove trailing newline character from result string
             return(result.rstrip("\n"))
 
-    def update(self, value):
-        
-        result = self.pre_process_result(value)
-        for p in self.parsers:
-            result = p.parse(result) # apply parsers to result
+    def update(self, value, raw = False):
+        if raw:
+            result = value # do not apply parsers to raw values
+        else:  # apply parsers to non-raw values
+            result = self.pre_process_result(value)
+            for p in self.parsers:
+                result = p.parse(result) # apply parsers to result
         self.result_callback(result)
         print("Updating Sensor. Raw value: ", value, "Parsed value: ", result)
 
@@ -218,23 +230,25 @@ class Button:
         subprocess.run([self.shell, "-c", self.command], stdout=subprocess.PIPE).stdout.decode("utf-8")
 
 
-'''class Select:
-    def __init__(self, command_template, shell, state_mapping = {}, sensor = None):
+class Select:
+    def __init__(self, command_template, shell, state_map: bidict = bidict({}), sensor = None):
         self.command_template = command_template
         self.shell = shell
-        self.state_mapping = state_mapping
+        self.state_map = state_map
         if sensor is None:
             self.sensor = OptimisticSensor()
         else:
             self.sensor = sensor
+        # Add a parser to the sensor that will convert the raw value to the mapped value
+        sensor.parsers.append(StateMapResultParser(state_map.inverse))
 
     def select(self, value):
-        subprocess.run([self.shell, "-c", self.command_template.format(value)], stdout=subprocess.PIPE).stdout.decode("utf-8")
-        mapped_value  = self.state_mapping.get(value, value)
-        self.sensor.update(mapped_value)
+        mapped_value  = self.state_map.get(value, value)
+        subprocess.run([self.shell, "-c", self.command_template.format(mapped_value)], stdout=subprocess.PIPE).stdout.decode("utf-8")
+        self.sensor.update(value, raw = True)
     
     def stop(self):
-        self.sensor.stop()'''
+        self.sensor.stop()
 
 def load_sensor(sensor_config, callback, binary = False):
     if sensor_config["type"] == "command":
@@ -260,6 +274,10 @@ def load_sensor(sensor_config, callback, binary = False):
                 regex = parser_config.get("regex")
                 group = parser_config.get("group")
                 parser = RegexResultParser(regex, group)
+            elif parser_config["type"] == "state_map":
+                map = bidict(parser_config.get("map"))
+                parser = StateMapResultParser(map) 
+
             parsers.append(parser)
         if not binary:
             return(CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
@@ -303,6 +321,19 @@ def create_binary_sensor(entity_config, mqtt_settings):
     entity = load_sensor(entity_config, ha_entity.update_state, binary = True)
     return entity, ha_entity
 
+def create_sensor(entity_config, mqtt_settings):
+    entity_info_kwargs = get_entity_info(entity_config)
+    entity_info_kwargs.update({ 
+        "unit_of_measurement": entity_config.get("unit_of_measurement"),
+        "device_class": entity_config.get("class"),
+    })
+    ha_entity_info = HASensorInfo(**entity_info_kwargs)
+
+    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+    ha_entity = HASensor(ha_settings)
+    entity = load_sensor(entity_config, ha_entity.set_state)
+    return entity, ha_entity
+
 
 def create_button(entity_config, mqtt_settings):
     entity_info_kwargs = get_entity_info(entity_config)
@@ -318,6 +349,35 @@ def create_button(entity_config, mqtt_settings):
     ha_entity = HAButton(ha_settings, button_press_wrapper)
     ha_entity.write_config()
     return entity, ha_entity
+
+def create_select(entity_config, mqtt_settings):
+    entity_info_kwargs = get_entity_info(entity_config)
+
+    state_map = bidict(entity_config.get("state_map", {}))
+    options = list(state_map.keys())
+    
+    entity_info_kwargs["options"] = options
+    ha_entity_info = HASelectInfo(**entity_info_kwargs)
+
+    select_command_template = entity_config.get("command_template")
+    select_shell = entity_config.get("shell", "bash")
+    if "sensor" in entity_config:
+        sensor = load_sensor(entity_config["sensor"], print)
+    else:
+        sensor = None
+    entity = Select(select_command_template, select_shell, state_map, sensor)
+
+    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+    def select_callback(client: Client, user_data, message: MQTTMessage):
+        value = message.payload.decode()
+        entity.select(value)
+    ha_entity = HASelect(ha_settings, select_callback)
+    ha_entity.write_config()
+    entity.sensor.result_callback = ha_entity.set_options
+    return entity, ha_entity
+    
+
+
 
 def create_entity(entity_type, entity_config, mqtt_settings):
     if "device" in entity_config:
@@ -336,15 +396,7 @@ def create_entity(entity_type, entity_config, mqtt_settings):
     ha_entity_info = None
 
     if entity_type == "sensor":
-        entity_info_kwargs.update({ 
-            "unit_of_measurement": entity_config.get("unit_of_measurement"),
-            "device_class": entity_config.get("class"),
-        })
-        ha_entity_info = HASensorInfo(**entity_info_kwargs)
-
-        ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-        ha_entity = HASensor(ha_settings)
-        entity = load_sensor(entity_config, ha_entity.set_state)
+        entity, ha_entity = create_sensor(entity_config, mqtt_settings)
     elif entity_type == "binary_sensor":
         entity, ha_entity = create_binary_sensor(entity_config, mqtt_settings)
     elif entity_type == "switch":
@@ -379,6 +431,8 @@ def create_entity(entity_type, entity_config, mqtt_settings):
         entity.sensor.result_callback = ha_set_callback
     elif entity_type == "button":
         entity, ha_entity = create_button(entity_config, mqtt_settings)
+    elif entity_type == "select":
+        entity, ha_entity = create_select(entity_config, mqtt_settings)
 
     return entity, ha_entity
 
@@ -419,6 +473,7 @@ if __name__ == "__main__":
     binary_sensors, ha_binary_sensors = load_entities("binary_sensor", config.config_dict["entities"].get("binary_sensors", []), mqtt_settings)
     switches, ha_switches = load_entities("switch", config.config_dict["entities"].get("switches", []), mqtt_settings)
     buttons, ha_buttons = load_entities("button", config.config_dict["entities"].get("buttons", []), mqtt_settings)
+    selects, ha_selects = load_entities("select", config.config_dict["entities"].get("selects", []), mqtt_settings)
 
 
     while True:

@@ -59,7 +59,6 @@ TODO
 
 # Todo
 - **Notifications**
-- **Selects**
 - **Lights**: Possible integration with OpenRGB
 - **System Monitoring**
   - **CPU Metrics**
@@ -167,6 +166,18 @@ entities:
         - type: "bool" # This is mandatory as a last parse step for binary sensors
 ```
 
+### Buttons
+A button can only be pressed and has no intrinsid state. Its purpose is to do something without monitoring the effect of that action.
+
+```yaml
+entities:
+  buttons:
+    - name: Button Name
+      id: button_id
+      command: "some command to be executed"
+      shell: "bash" # currently supported shells: bash
+```
+
 ### Switches
 Switches can be turned on or off. They are typically used to control devices, such as turning lights on and off. They also have an optional binary_sensor which can be configured the same way as any other binary_sensor, with the exception that the binary_sensor id will be ignored. This is not an actual Home Assistant binary_sensor and it is only used to determine the state of the switch
 
@@ -189,17 +200,22 @@ entities:
           - type: "bool"
 ```
 
-### Buttons
-A button can only be pressed and has no intrinsid state. Its purpose is to do something without monitoring the effect of that action.
+### Selects
+Selects can be in a list of states. They can be used to control multiple power profiles for example.
 
 ```yaml
 entities:
-  buttons:
-    - name: Button Name
-      id: button_id
-      command: "some command to be executed"
-      shell: "bash" # currently supported shells: bash
-```
-
-
+  selects:
+    - name: "Select Name"
+      id: "select_id" # Unique identifier for the entity
+      type: "command" # Type of the sensor (e.g., command)
+      command_template: "echo {} > /my/file" # Command template to be executed when a state is selected. This is a python f string and will be formated as such.
+      state_map:
+        # Value to be displayed in Home Assistant: Value to be passed to command
+        State1: "Value1"
+        State2: "Value2"
+      sensor: # Optional
+        type: "command" # Type of the sensor (e.g., command)
+        command: "cat /my/file" # Command to read the current state from a file
+        polling_rate: 1 # Polling rate in 1/seconds
 
