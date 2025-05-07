@@ -16,26 +16,32 @@ Hass Companion was created initially to overcome the lack of solutions like [HAS
 
 # Install
 
-## Requirements
-- **Python** > 3.12.3 (older 3.X versions will probably work but are not tested)
-
-## Install Dependencies
-
-### 1) Clone the Repository or download the zip and go to the repository folder in your terminal
+#### 1) Clone the Repository or download the zip and go to the repository folder in your terminal
 ``` 
 git clone https://github.com/mhentschke/hass_companion.git 
 cd hass_companion
 ```
 
-### 2) Install Python requirements:
+## Quick Install
+
+Run ```./hass-companion.sh install```. This will install python, all of the dependencies of the project into a venv and offer you options to register it as a service for auto start 
+
+## Manual Install
+
+### Requirements
+- **Python** > 3.12.3 (older 3.X versions will probably work but are not tested)
+
+### Install Dependencies
+
+#### 1) Install Python requirements:
 
 ```
 pip install -r requirements.txt
 ```
 
-## Configure
+### Configure
 
-### 1) Create .env file containing your MQTT information:
+#### 1) Create .env file containing your MQTT information:
 ```
 HA_MQTT_HOST="host_ip_or_url"
 HA_MQTT_PORT=1883
@@ -45,15 +51,15 @@ HA_MQTT_PASSWORD="password"
 * Port is optional and defaults to 1833
 * Username and Password are optional and depend on your MQTT config. Having authentication is recommended
 
-### 2) Create your config file
+#### 2) Create your config file
 An example of config file is provided with the code. Your config file needs to be called ```config.yaml```
 
-### 3) Test your configuration
+#### 3) Test your configuration
 Run ```python hass-companion.py``` and check the output for any errors. If none are present, you are good to configure Hass Companion to start with your system
 
-### 4) Start with system
+#### 4) Start with system
 
-TODO
+Run ```./hass-companion.sh autostart```
 
 
 
