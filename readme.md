@@ -80,9 +80,6 @@ Run ```./hass-companion.sh autostart```
 - **Documentation Improvements**
 
 
-
-
-
 # Configuration
 
 ## MQTT Settings
@@ -224,4 +221,8 @@ entities:
         type: "command" # Type of the sensor (e.g., command)
         command: "cat /my/file" # Command to read the current state from a file
         polling_rate: 1 # Polling rate in 1/seconds
+```
 
+# Usage
+
+```hass-companion.sh``` is the launch script that can be used to do management and to start the application.

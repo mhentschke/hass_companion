@@ -4,12 +4,31 @@
 help() {
     echo "Usage: install.sh <command>"
     echo "Available commands:"
+    echo "  start           Starts the application in standalone mode"
     echo "  install         Install the application"
     echo "  uninstall       Uninstall the application"
     echo "  autostart       Set up the application to start on boot"
     echo "  remove-autostart Remove the application from starting on boot"
     echo "  help            Show this help message"
     exit 1
+}
+
+start() {
+    # ask if should stop the service
+    read -p "This will stop the service and run as standalone. To restart the service, you can run ./hass-companion.sh autostart. Are you sure you want to stop the service? (y/n): " stop_service
+    if [ "$stop_service" == "y" ]; then
+        echo "Stopping service..."
+        sudo systemctl stop hass-companion.service
+        # get the path to the virtual environment's python interpreter
+        python_path=$(which python3)
+        # get the path to the script
+        script_path=$(pwd)/hass-companion.py
+        echo "Starting standalone with command: $python_path $script_path"
+        $python_path $script_path
+    else
+        echo Operation aborted by user!
+    fi
+
 }
 
 autostart() {
@@ -108,6 +127,9 @@ fi
 command=$1
 # Check if command is valid
 case $command in
+    start)
+        start
+        ;;
     install)
         echo "Installing..."
         install
