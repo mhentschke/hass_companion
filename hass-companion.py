@@ -153,7 +153,43 @@ class BinarySensor(Sensor):
         self.update(True)
     def off(self):
         self.update(False)
+
+class PollingSensor(Sensor):
+    def __init__(self, function, polling_rate, result_callback, shell, parsers = []):
+        self.function = function
+        self.polling_rate = polling_rate
+        self.polling_time = 1.0/polling_rate
+        self.exit = threading.Event()
+        self.thread = threading.Thread(target = self.polling_thread, daemon = True)
+        self.shell = shell
+        self.parsers = parsers
+        super().__init__(result_callback)
+        self.start()
     
+    def start(self):
+        self.thread.start()
+    
+    def polling_thread(self):
+        while not self.exit.is_set():
+            self.function()
+            self.exit.wait(timeout = self.polling_time)
+    
+    def pre_process_result(self, result):
+        return result # This is a placeholder function that returns the raw result. You can modify it in subclasses to preprocess the result as needed.
+    
+    def update(self, value, raw = False):
+        if raw:
+            result = value
+        else:
+            result = self.self.pre_process_result(value)
+            for p in self.parsers:
+                result = p.parse(result) # apply parsers to result
+        self.result_callback(result)
+        print("Updating Sensor. Raw value: ", value, "Parsed value: ", result)
+
+    def stop(self):
+        self.exit.set()
+
 
 class CommandSensor(Sensor):
     def __init__(self, command, polling_rate, result_callback, shell, parsers = []):
