@@ -23,10 +23,12 @@ import signal
 import sys
 import re
 import os
+import psutil
 from typing import Any
 from paho.mqtt.client import Client, MQTTMessage
 from dotenv import load_dotenv 
 from bidict import bidict
+from collections.abc import Iterable
 load_dotenv() 
 
 _var_matcher = re.compile(r"\${([^}^{]+)}")
@@ -155,13 +157,12 @@ class BinarySensor(Sensor):
         self.update(False)
 
 class PollingSensor(Sensor):
-    def __init__(self, function, polling_rate, result_callback, shell, parsers = []):
+    def __init__(self, function, polling_rate, result_callback, parsers = []):
         self.function = function
         self.polling_rate = polling_rate
         self.polling_time = 1.0/polling_rate
         self.exit = threading.Event()
         self.thread = threading.Thread(target = self.polling_thread, daemon = True)
-        self.shell = shell
         self.parsers = parsers
         super().__init__(result_callback)
         self.start()
@@ -171,7 +172,7 @@ class PollingSensor(Sensor):
     
     def polling_thread(self):
         while not self.exit.is_set():
-            self.function()
+            self.update(self.function())
             self.exit.wait(timeout = self.polling_time)
     
     def pre_process_result(self, result):
@@ -190,6 +191,52 @@ class PollingSensor(Sensor):
     def stop(self):
         self.exit.set()
 
+class MultiSensor(Sensor):
+    def __init__(self, function, result_callbacks):
+        self.result_callbacks = result_callbacks
+        super().__init__(function, self.result_callback_unwrapper)
+
+    def result_callback_unwrapper(self, callbacks, values):
+        if isinstance(value, int) or isinstance(value, float) or isinstance(value, bool) or isinstance(value, str):
+            callback(value)
+        if isinstance(value, list):
+            for callback, value in zip(callbacks, values):
+                self.result_callback_unwrapper(callback, value) # recursive call
+        elif isinstance(value, dict):
+            for keys in value.keys():
+                self.result_callback_unwrapper(callbacks[keys], value[keys]) # recursive call
+        elif isinstance(value, tuple):
+            if isinstance(callbacks, dict):
+                self.result_callback_unwrapper(callbacks, value._asdict())
+            else:
+                for callback, value in zip(callbacks, values):
+                    self.result_callback_unwrapper(callback, value)
+
+class PSUtilParser(ResultParser):
+    def parse(self, value):
+        if isinstance(value, int) or isinstance(value, float) or isinstance(value, str):
+            return value
+        else:
+            if isinstance(value, list):
+                return self.unwrap_list(value)
+            elif isinstance(value, psutil._common.scpufreq):
+                return value.current
+            else:
+                raise ValueError("Unexpected type: {}".format(type(value)))
+
+    def unwrap_list(self, value):
+        if isinstance(value, list):
+            result = []
+            for v in value:
+                result.append(self.parse(v))
+            return result
+        else:
+            raise ValueError("Expected a list but got {}".format(type(value)))
+
+class MultiPollingSensor(MultiSensor, PollingSensor):
+    def __init__(self, function, polling_rate, result_callbacks):
+        super(MultiSensor, self).__init__(function, result_callbacks)
+        super(PollingSensor, self).__init__(function, polling_rate, self.result_callback_unwrapper)
 
 class CommandSensor(Sensor):
     def __init__(self, command, polling_rate, result_callback, shell, parsers = []):
@@ -411,7 +458,6 @@ def create_select(entity_config, mqtt_settings):
     ha_entity.write_config()
     entity.sensor.result_callback = ha_entity.set_options
     return entity, ha_entity
-    
 
 
 
