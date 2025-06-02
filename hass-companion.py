@@ -24,11 +24,13 @@ import sys
 import re
 import os
 import psutil
+from functools import partial
 from typing import Any
 from paho.mqtt.client import Client, MQTTMessage
 from dotenv import load_dotenv 
 from bidict import bidict
 from collections.abc import Iterable
+import copy
 load_dotenv() 
 
 _var_matcher = re.compile(r"\${([^}^{]+)}")
@@ -157,13 +159,12 @@ class BinarySensor(Sensor):
         self.update(False)
 
 class PollingSensor(Sensor):
-    def __init__(self, function, polling_rate, result_callback, parsers = []):
+    def __init__(self, function, polling_rate, result_callback):
         self.function = function
         self.polling_rate = polling_rate
         self.polling_time = 1.0/polling_rate
         self.exit = threading.Event()
         self.thread = threading.Thread(target = self.polling_thread, daemon = True)
-        self.parsers = parsers
         super().__init__(result_callback)
         self.start()
     
@@ -177,16 +178,9 @@ class PollingSensor(Sensor):
     
     def pre_process_result(self, result):
         return result # This is a placeholder function that returns the raw result. You can modify it in subclasses to preprocess the result as needed.
-    
-    def update(self, value, raw = False):
-        if raw:
-            result = value
-        else:
-            result = self.self.pre_process_result(value)
-            for p in self.parsers:
-                result = p.parse(result) # apply parsers to result
-        self.result_callback(result)
-        print("Updating Sensor. Raw value: ", value, "Parsed value: ", result)
+
+    def update(self, value):
+        self.result_callback(self.pre_process_result(value))
 
     def stop(self):
         self.exit.set()
@@ -194,23 +188,25 @@ class PollingSensor(Sensor):
 class MultiSensor(Sensor):
     def __init__(self, function, result_callbacks):
         self.result_callbacks = result_callbacks
-        super().__init__(function, self.result_callback_unwrapper)
+        Sensor.__init__(function, self.result_callback_unwrapper)
 
-    def result_callback_unwrapper(self, callbacks, values):
-        if isinstance(value, int) or isinstance(value, float) or isinstance(value, bool) or isinstance(value, str):
-            callback(value)
-        if isinstance(value, list):
+    def result_callback_unwrapper(self, values, callbacks = None):
+        if callbacks is None:
+            callbacks = self.result_callbacks
+        if isinstance(values, int) or isinstance(values, float) or isinstance(values, bool) or isinstance(values, str):
+            callbacks(values)
+        if isinstance(values, list):
             for callback, value in zip(callbacks, values):
-                self.result_callback_unwrapper(callback, value) # recursive call
-        elif isinstance(value, dict):
+                self.result_callback_unwrapper(value, callbacks=callback) # recursive call
+        elif isinstance(values, dict):
             for keys in value.keys():
-                self.result_callback_unwrapper(callbacks[keys], value[keys]) # recursive call
-        elif isinstance(value, tuple):
+                self.result_callback_unwrapper( value[keys], callbacks = callbacks[keys]) # recursive call
+        elif isinstance(values, tuple):
             if isinstance(callbacks, dict):
-                self.result_callback_unwrapper(callbacks, value._asdict())
+                self.result_callback_unwrapper(value._asdict(), callbacks = callbacks)
             else:
                 for callback, value in zip(callbacks, values):
-                    self.result_callback_unwrapper(callback, value)
+                    self.result_callback_unwrapper(value, callbacks = callback)
 
 class PSUtilParser(ResultParser):
     def parse(self, value):
@@ -235,8 +231,8 @@ class PSUtilParser(ResultParser):
 
 class MultiPollingSensor(MultiSensor, PollingSensor):
     def __init__(self, function, polling_rate, result_callbacks):
-        super(MultiSensor, self).__init__(function, result_callbacks)
-        super(PollingSensor, self).__init__(function, polling_rate, self.result_callback_unwrapper)
+        MultiSensor.__init__(self, function, result_callbacks)
+        PollingSensor.__init__(self, function, polling_rate, self.result_callback_unwrapper)
 
 class CommandSensor(Sensor):
     def __init__(self, command, polling_rate, result_callback, shell, parsers = []):
@@ -460,7 +456,6 @@ def create_select(entity_config, mqtt_settings):
     return entity, ha_entity
 
 
-
 def create_entity(entity_type, entity_config, mqtt_settings):
     if "device" in entity_config:
         device = ha_devices[entity_config["device"]]
@@ -527,6 +522,65 @@ def load_entities(entity_type, entity_configs, mqtt_settings):
         ha_entities.append(ha_entity)
     return entities, ha_entities
 
+def load_system_entities(entity_configs, mqtt_settings):
+    entities = []
+    ha_entities = []
+    device = ha_device
+    for system_entity_type, system_entity_config in entity_configs.items():
+        if system_entity_type == "cpu":
+            if "percent" in system_entity_config:
+                entity_info_kwargs = {
+                    "name": "CPU Usage",
+                    "unit_of_measurement": "%",
+                    "unique_id": "cpu_usage",
+                    "icon": "mdi:cpu-64-bit",
+                    "device": device,
+                }
+                total_flag = system_entity_config["percent"].get("total", True)
+                if total_flag:
+                    ha_entity_info = HASensorInfo(**entity_info_kwargs)
+                    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+                    ha_entity = HASensor(ha_settings)
+                    entity = PollingSensor(psutil.cpu_percent, 1, ha_entity.set_state)
+                    entities.append(entity)
+                    ha_entities.append(ha_entity)
+                
+                per_cpu_flag = system_entity_config["percent"].get("per_cpu", False)
+                if per_cpu_flag:
+                    multisensor_callbacks = []
+                    for i, cpu in enumerate(psutil.cpu_percent(interval=1, percpu=True)):
+                        entity_info_kwargs_multisensor = copy.deepcopy(entity_info_kwargs)
+                        entity_info_kwargs_multisensor["name"] += f" CPU {i} Usage"
+                        entity_info_kwargs_multisensor["unique_id"] += f"_cpu_{i}"
+                        ha_entity_info = HASensorInfo(**entity_info_kwargs_multisensor)
+                        ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+                        ha_entity = HASensor(ha_settings)
+                        ha_entities.append(ha_entity)
+                        multisensor_callbacks.append(ha_entity.set_state)
+                    entity = MultiPollingSensor(partial(psutil.cpu_percent, percpu = True), 1, multisensor_callbacks)
+                    entities.append(entity)
+            if "freq" in system_entity_config:
+                entity_info_kwargs = {
+                    "name": "CPU Frequency",
+                    "unit_of_measurement": "MHz",
+                    "unique_id": "cpu_freq",
+                    "icon": "mdi:cpu-64-bit",
+                    "device": device,
+                }
+                total_flag = system_entity_config["freq"].get("total", False)
+                if total_flag:
+                    ha_entity_info = HASensorInfo(**entity_info_kwargs)
+                    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
+                    ha_entity = HASensor(ha_settings)
+                    entity = PollingSensor(psutil.cpu_freq, 1, ha_entity.set_state)
+
+        
+        if system_entity_type == "memory":
+            pass
+    
+    return entities, ha_entities
+                
+
 
     
 if __name__ == "__main__":
@@ -556,6 +610,7 @@ if __name__ == "__main__":
     switches, ha_switches = load_entities("switch", config.config_dict["entities"].get("switches", []), mqtt_settings)
     buttons, ha_buttons = load_entities("button", config.config_dict["entities"].get("buttons", []), mqtt_settings)
     selects, ha_selects = load_entities("select", config.config_dict["entities"].get("selects", []), mqtt_settings)
+    system_entities, ha_system_entities = load_system_entities(config.config_dict["entities"].get("system", []), mqtt_settings)
 
 
     while True:
