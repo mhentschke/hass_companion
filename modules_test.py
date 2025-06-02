@@ -1,3 +1,3 @@
-import core.companion_entities as companion_entities
+import core.companion_entities as c_entities
 
 companion_entities.Sensor(print)

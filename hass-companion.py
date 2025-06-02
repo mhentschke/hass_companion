@@ -13,7 +13,10 @@ from ha_mqtt_discoverable.sensors import (
     Select as HASelect,
     SelectInfo as HASelectInfo, 
 )
-
+import core.companion_entities as c_entities
+import core.parsers as parsers
+import core.psutil_bindings as psutil_bindings
+import core.entities as core_entities
 import paho.mqtt.client as mqtt_client
 import threading
 import subprocess
@@ -56,278 +59,6 @@ class Config:
         with open(self.filepath, 'r') as file:
             self.config_dict = yaml.safe_load(file)
 
-class ResultParser:
-    def __init__(self):
-        pass
-    def parse(self, text):
-        return text
-
-class IntResultParser(ResultParser):
-    def parse(self, text):
-        return int(text)
-
-class FloatResultParser(ResultParser):
-    def parse(self, text):
-        return float(text)
-
-class BoolResultParser(ResultParser):
-    def parse(self, text):
-        if str(text).lower() in ['true', '1', 't', 'y', 'yes']:
-            return True
-        elif str(text).lower() in ['false', '0', 'f', 'n', 'no']:
-            return False
-        else:
-            return False
-
-class StringResultParser(ResultParser):
-    def parse(self, text):
-        return str(text)
-
-class CompareResultParser(ResultParser):
-    def __init__(self, compare_value, operator):
-        self.compare_value = compare_value
-        self.operator = operator
-        # Check operator validity:
-        if operator not in ['<', '>', '<=', '>=', '==', '!=']:
-            raise ValueError("Invalid operator")
-        
-    def parse(self, value):
-        
-        if self.operator == '<':
-            return value < self.compare_value
-        elif self.operator == '>':
-            return value > self.compare_value
-        elif self.operator == '<=':
-            return value <= self.compare_value
-        elif self.operator == '>=':
-            return value >= self.compare_value
-        elif self.operator == '==':
-            return value == self.compare_value
-        elif self.operator == '!=':
-            return value != self.compare_value
-
-
-class RegexResultParser(ResultParser):
-    def __init__(self, regex, group = None):
-        self.regex = regex
-        self.group = group
-    def parse(self, text):
-        import re
-        match = re.search(self.regex, str(text))
-        if match:
-            if self.group is not None:
-                return match.group(self.group)
-            else:
-                return match.group(0)
-        else:
-            return None
-
-class StateMapResultParser(ResultParser):
-    def __init__(self, mapping):
-        self.mapping = mapping
-    def parse(self, text):
-        return self.mapping.get(text, text)
-
-
-class Sensor():
-    def __init__(self, result_callback):
-        self.result_callback = result_callback
-    def update(self, value):
-        self.result_callback(value)
-    def stop(self):
-        pass
-    
-
-class OptimisticSensor(Sensor):
-    def __init__(self):
-        self.state = None
-        def null_function(value):
-            pass
-        super().__init__(null_function)
-    def update(self, value):
-        self.state = value
-
-class BinarySensor(Sensor):
-    def update(self, value):
-        if isinstance(value, bool):
-            super().update(value)
-        else:
-            raise ValueError('Invalid binary sensor value')
-    def on(self):
-        self.update(True)
-    def off(self):
-        self.update(False)
-
-class PollingSensor(Sensor):
-    def __init__(self, function, polling_rate, result_callback):
-        self.function = function
-        self.polling_rate = polling_rate
-        self.polling_time = 1.0/polling_rate
-        self.exit = threading.Event()
-        self.thread = threading.Thread(target = self.polling_thread, daemon = True)
-        super().__init__(result_callback)
-        self.start()
-    
-    def start(self):
-        self.thread.start()
-    
-    def polling_thread(self):
-        while not self.exit.is_set():
-            self.update(self.function())
-            self.exit.wait(timeout = self.polling_time)
-    
-    def pre_process_result(self, result):
-        return result # This is a placeholder function that returns the raw result. You can modify it in subclasses to preprocess the result as needed.
-
-    def update(self, value):
-        self.result_callback(self.pre_process_result(value))
-
-    def stop(self):
-        self.exit.set()
-
-class MultiSensor(Sensor):
-    def __init__(self, function, result_callbacks):
-        self.result_callbacks = result_callbacks
-        Sensor.__init__(function, self.result_callback_unwrapper)
-
-    def result_callback_unwrapper(self, values, callbacks = None):
-        if callbacks is None:
-            callbacks = self.result_callbacks
-        if isinstance(values, int) or isinstance(values, float) or isinstance(values, bool) or isinstance(values, str):
-            callbacks(values)
-        if isinstance(values, list):
-            for callback, value in zip(callbacks, values):
-                self.result_callback_unwrapper(value, callbacks=callback) # recursive call
-        elif isinstance(values, dict):
-            for keys in value.keys():
-                self.result_callback_unwrapper( value[keys], callbacks = callbacks[keys]) # recursive call
-        elif isinstance(values, tuple):
-            if isinstance(callbacks, dict):
-                self.result_callback_unwrapper(value._asdict(), callbacks = callbacks)
-            else:
-                for callback, value in zip(callbacks, values):
-                    self.result_callback_unwrapper(value, callbacks = callback)
-
-class PSUtilParser(ResultParser):
-    def parse(self, value):
-        if isinstance(value, int) or isinstance(value, float) or isinstance(value, str):
-            return value
-        else:
-            if isinstance(value, list):
-                return self.unwrap_list(value)
-            elif isinstance(value, psutil._common.scpufreq):
-                return value.current
-            else:
-                raise ValueError("Unexpected type: {}".format(type(value)))
-
-    def unwrap_list(self, value):
-        if isinstance(value, list):
-            result = []
-            for v in value:
-                result.append(self.parse(v))
-            return result
-        else:
-            raise ValueError("Expected a list but got {}".format(type(value)))
-
-class MultiPollingSensor(MultiSensor, PollingSensor):
-    def __init__(self, function, polling_rate, result_callbacks):
-        MultiSensor.__init__(self, function, result_callbacks)
-        PollingSensor.__init__(self, function, polling_rate, self.result_callback_unwrapper)
-
-class CommandSensor(Sensor):
-    def __init__(self, command, polling_rate, result_callback, shell, parsers = []):
-        self.command = command
-        self.polling_rate = polling_rate
-        self.polling_time = 1.0/polling_rate
-        self.exit = threading.Event()
-        self.thread = threading.Thread(target = self.polling_thread, daemon = True)
-        self.shell = shell
-        self.parsers = parsers
-        super().__init__(result_callback)
-        self.start()
-
-    def start(self):
-        print("Starting command sensor")
-        self.thread.start()
-
-    def polling_thread(self):
-        while not self.exit.is_set():
-            # execute command
-            self.update(subprocess.run([self.shell, "-c", self.command], stdout = subprocess.PIPE).stdout.decode("utf-8"))
-            
-            # wait for next polling time
-            self.exit.wait(timeout = self.polling_time)
-    
-    def pre_process_result(self, result):
-        if isinstance(result, str): # remove trailing newline character from result string
-            return(result.rstrip("\n"))
-
-    def update(self, value, raw = False):
-        if raw:
-            result = value # do not apply parsers to raw values
-        else:  # apply parsers to non-raw values
-            result = self.pre_process_result(value)
-            for p in self.parsers:
-                result = p.parse(result) # apply parsers to result
-        self.result_callback(result)
-        print("Updating Sensor. Raw value: ", value, "Parsed value: ", result)
-
-    def stop(self):
-        self.exit.set()
-
-class BinaryCommandSensor(CommandSensor, BinarySensor):
-    pass
-
-
-class Switch:
-    def __init__(self, command_on, command_off, shell, sensor = None):
-        self.command_on = command_on
-        self.command_off = command_off
-        self.shell = "bash"
-        if sensor is None:
-            self.sensor = OptimisticSensor()
-        else:
-            self.sensor = sensor
-
-    def turn_on(self):
-        subprocess.run([self.shell, "-c", self.command_on], stdout=subprocess.PIPE).stdout.decode("utf-8")
-        self.sensor.update("True")
-
-    def turn_off(self):
-        subprocess.run([self.shell, "-c", self.command_off], stdout=subprocess.PIPE).stdout.decode("utf-8")
-        self.sensor.update("False")
-    
-    def stop(self):
-        self.sensor.stop()
-
-class Button:
-    def __init__(self, command, shell):
-        self.command = command
-        self.shell = shell
-
-    def press(self):
-        subprocess.run([self.shell, "-c", self.command], stdout=subprocess.PIPE).stdout.decode("utf-8")
-
-
-class Select:
-    def __init__(self, command_template, shell, state_map: bidict = bidict({}), sensor = None):
-        self.command_template = command_template
-        self.shell = shell
-        self.state_map = state_map
-        if sensor is None:
-            self.sensor = OptimisticSensor()
-        else:
-            self.sensor = sensor
-        # Add a parser to the sensor that will convert the raw value to the mapped value
-        sensor.parsers.append(StateMapResultParser(state_map.inverse))
-
-    def select(self, value):
-        mapped_value  = self.state_map.get(value, value)
-        subprocess.run([self.shell, "-c", self.command_template.format(mapped_value)], stdout=subprocess.PIPE).stdout.decode("utf-8")
-        self.sensor.update(value, raw = True)
-    
-    def stop(self):
-        self.sensor.stop()
 
 def load_sensor(sensor_config, callback, binary = False):
     if sensor_config["type"] == "command":
@@ -338,30 +69,30 @@ def load_sensor(sensor_config, callback, binary = False):
         parsers = []
         for parser_config in parser_configs:
             if parser_config["type"] == "int":
-                parser = IntResultParser() 
+                parser = parsers.IntResultParser() 
             elif parser_config["type"] == "float":
-                parser = FloatResultParser() 
+                parser = parsers.FloatResultParser() 
             elif parser_config["type"] == "bool":
-                parser = BoolResultParser() 
+                parser = parsers.BoolResultParser() 
             elif parser_config["type"] == "string":
-                parser = StringResultParser()                 
+                parser = parsers.StringResultParser()                 
             elif parser_config["type"] == "compare":
                 operator = parser_config.get("operator")
                 value = parser_config.get("value")
-                parser = CompareResultParser(operator, value)                 
+                parser = parsers.CompareResultParser(operator, value)                 
             elif parser_config["type"] == "regex":
                 regex = parser_config.get("regex")
                 group = parser_config.get("group")
-                parser = RegexResultParser(regex, group)
+                parser = parsers.RegexResultParser(regex, group)
             elif parser_config["type"] == "state_map":
                 map = bidict(parser_config.get("map"))
-                parser = StateMapResultParser(map) 
+                parser = parsers.StateMapResultParser(map) 
 
             parsers.append(parser)
         if not binary:
-            return(CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
+            return(c_entities.CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
         else:
-            return(BinaryCommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
+            return(c_entities.BinaryCommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
 
 def shutdown():
     for s in sensors:
@@ -420,7 +151,7 @@ def create_button(entity_config, mqtt_settings):
         
     button_command = entity_config.get("command")
     button_shell = entity_config.get("shell", "bash")
-    entity = Button(button_command, button_shell)
+    entity = c_entities.Button(button_command, button_shell)
 
     ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
     def button_press_wrapper(client: Client, user_data, message: MQTTMessage):
@@ -444,7 +175,7 @@ def create_select(entity_config, mqtt_settings):
         sensor = load_sensor(entity_config["sensor"], print)
     else:
         sensor = None
-    entity = Select(select_command_template, select_shell, state_map, sensor)
+    entity = c_entities.Select(select_command_template, select_shell, state_map, sensor)
 
     ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
     def select_callback(client: Client, user_data, message: MQTTMessage):
@@ -486,7 +217,7 @@ def create_entity(entity_type, entity_config, mqtt_settings):
             sensor = load_sensor(entity_config["binary_sensor"], print, binary = True)
         else:
             sensor = None
-        entity = Switch(entity_command_on, entity_command_off, shell = switch_shell, sensor = sensor,)
+        entity = c_entities.Switch(entity_command_on, entity_command_off, shell = switch_shell, sensor = sensor,)
         def switch_callback(client: Client, user_data, message: MQTTMessage):
             payload = message.payload.decode()
             if payload == "ON":
@@ -522,6 +253,31 @@ def load_entities(entity_type, entity_configs, mqtt_settings):
         ha_entities.append(ha_entity)
     return entities, ha_entities
 
+def create_ha_entity(entity_type, entity_info, mqtt):
+    if entity_type == "sensor":
+        ha_entity_info_class = HASensorInfo
+        ha_class = HASensor
+    elif entity_type == "switch":
+        ha_entity_info_class = HASwitchInfo
+        ha_class = HASwitch
+    elif entity_type == "button":
+        ha_entity_info_class = HAButtonInfo
+        ha_class = HAButton
+    elif entity_type == "binary_sensor":
+        ha_entity_info_class = HABinarySensorInfo
+        ha_class = HABinarySensor
+    elif entity_type == "select":
+        ha_entity_info_class = HASelectInfo
+        ha_class = HASelect
+    else:
+        raise ValueError(f"Unknown entity type: {entity_type}")
+
+    ha_entity_info = ha_entity_info_class(**entity_info)
+    ha_settings = HASettings(mqtt = mqtt, entity = ha_entity_info)
+    ha_entity = ha_class(ha_settings)
+    return ha_entity
+
+
 def load_system_entities(entity_configs, mqtt_settings):
     entities = []
     ha_entities = []
@@ -536,29 +292,14 @@ def load_system_entities(entity_configs, mqtt_settings):
                     "icon": "mdi:cpu-64-bit",
                     "device": device,
                 }
-                total_flag = system_entity_config["percent"].get("total", True)
-                if total_flag:
-                    ha_entity_info = HASensorInfo(**entity_info_kwargs)
-                    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-                    ha_entity = HASensor(ha_settings)
-                    entity = PollingSensor(psutil.cpu_percent, 1, ha_entity.set_state)
+                if system_entity_config["percent"].get("total", True):
+                    entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.cpu_percent, polling_rate=1)
                     entities.append(entity)
-                    ha_entities.append(ha_entity)
                 
-                per_cpu_flag = system_entity_config["percent"].get("per_cpu", False)
-                if per_cpu_flag:
-                    multisensor_callbacks = []
-                    for i, cpu in enumerate(psutil.cpu_percent(interval=1, percpu=True)):
-                        entity_info_kwargs_multisensor = copy.deepcopy(entity_info_kwargs)
-                        entity_info_kwargs_multisensor["name"] += f" CPU {i} Usage"
-                        entity_info_kwargs_multisensor["unique_id"] += f"_cpu_{i}"
-                        ha_entity_info = HASensorInfo(**entity_info_kwargs_multisensor)
-                        ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-                        ha_entity = HASensor(ha_settings)
-                        ha_entities.append(ha_entity)
-                        multisensor_callbacks.append(ha_entity.set_state)
-                    entity = MultiPollingSensor(partial(psutil.cpu_percent, percpu = True), 1, multisensor_callbacks)
+                if system_entity_config["percent"].get("per_cpu", False):
+                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, partial(psutil.cpu_percent, percpu = True), polling_rate=1)
                     entities.append(entity)
+            
             if "freq" in system_entity_config:
                 entity_info_kwargs = {
                     "name": "CPU Frequency",
@@ -567,16 +308,51 @@ def load_system_entities(entity_configs, mqtt_settings):
                     "icon": "mdi:cpu-64-bit",
                     "device": device,
                 }
-                total_flag = system_entity_config["freq"].get("total", False)
-                if total_flag:
-                    ha_entity_info = HASensorInfo(**entity_info_kwargs)
-                    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-                    ha_entity = HASensor(ha_settings)
-                    entity = PollingSensor(psutil.cpu_freq, 1, ha_entity.set_state)
+                if system_entity_config["freq"].get("total", False):
+                    entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.cpu_freq, polling_rate=1)
+                    entities.append(entity)
+                if system_entity_config["freq"].get("per_cpu", False):
+                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.cpu_freq, percpu = True), polling_rate=1)
+                    entities.append(entity)
 
-        
         if system_entity_type == "memory":
-            pass
+            if "virtual" in system_entity_config:
+                entity_info_kwargs = {
+                    "name": "Memory Virtual",
+                    "unique_id": "memory_virtual",
+                    "icon": "mdi:memory",
+                    "device": device,
+                }
+                units = {key: "MB" for key in ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]}
+                units["percent"] = "%"
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.virtual_memory, polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+            if "swap" in system_entity_config:
+                entity_info_kwargs = {
+                    "name": "Memory Swap",
+                    "unique_id": "memory_swap",
+                    "icon": "mdi:swap-horizontal",
+                    "device": device,
+                }
+                units = {key: "MB" for key in ["total", "used", "free"]}
+                units["percent"] = "%"
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.swap_memory, polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+        
+        if system_entity_type == "storage":
+            if "usage" in system_entity_config:
+                disks = psutil.disk_partitions()
+                for disk in disks:
+                    entity_info_kwargs = {
+                        "name": f"Disk Usage {disk.device}:{disk.mountpoint}",
+                        "unique_id": f"disk_usage {disk.device}:{disk.mountpoint}",
+                        "icon": "mdi:hard-drive",
+                        "device": device,
+                    }
+                    units = {key: "GB" for key in ["total", "used", "free"]}
+                    units["percent"] = "%"
+                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_usage, disk.mountpoint), polling_rate=1/60.0, units_of_measurement=units)
+                    entities.append(entity)
     
     return entities, ha_entities
                 

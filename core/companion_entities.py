@@ -1,6 +1,7 @@
 import subprocess
 import threading
 from bidict import bidict
+from . import parsers
 
 class Sensor():
     def __init__(self, result_callback):
@@ -61,7 +62,7 @@ class PollingSensor(Sensor):
 class MultiSensor(Sensor):
     def __init__(self, function, result_callbacks):
         self.result_callbacks = result_callbacks
-        Sensor.__init__(function, self.result_callback_unwrapper)
+        Sensor.__init__(self, self.result_callback_unwrapper)
 
     def result_callback_unwrapper(self, values, callbacks = None):
         if callbacks is None:
@@ -72,15 +73,14 @@ class MultiSensor(Sensor):
             for callback, value in zip(callbacks, values):
                 self.result_callback_unwrapper(value, callbacks=callback) # recursive call
         elif isinstance(values, dict):
-            for keys in value.keys():
-                self.result_callback_unwrapper( value[keys], callbacks = callbacks[keys]) # recursive call
+            for keys in values.keys():
+                self.result_callback_unwrapper( values[keys], callbacks = callbacks[keys]) # recursive call
         elif isinstance(values, tuple):
             if isinstance(callbacks, dict):
-                self.result_callback_unwrapper(value._asdict(), callbacks = callbacks)
+                self.result_callback_unwrapper(values._asdict(), callbacks = callbacks)
             else:
                 for callback, value in zip(callbacks, values):
                     self.result_callback_unwrapper(value, callbacks = callback)
-
 
 class MultiPollingSensor(MultiSensor, PollingSensor):
     def __init__(self, function, polling_rate, result_callbacks):
@@ -172,7 +172,7 @@ class Select:
         else:
             self.sensor = sensor
         # Add a parser to the sensor that will convert the raw value to the mapped value
-        sensor.parsers.append(StateMapResultParser(state_map.inverse))
+        sensor.parsers.append(parsers.StateMapResultParser(state_map.inverse))
 
     def select(self, value):
         mapped_value  = self.state_map.get(value, value)
