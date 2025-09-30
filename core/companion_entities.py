@@ -154,11 +154,19 @@ class Switch:
         self.sensor.stop()
 
 class Button:
+    def __init__(self, function):
+        self.function = function
+    
+    def press(self):
+        self.function()
+
+class CommandButton(Button):
     def __init__(self, command, shell):
         self.command = command
         self.shell = shell
-
-    def press(self):
+        super().__init__(self.execute_command)
+    
+    def execute_command(self):
         subprocess.run([self.shell, "-c", self.command], stdout=subprocess.PIPE).stdout.decode("utf-8")
 
 
