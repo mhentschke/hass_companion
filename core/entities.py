@@ -17,7 +17,7 @@ from ha_mqtt_discoverable.sensors import (
 import core.companion_entities as c_entities
 import copy
 
-def create_ha_entity(entity_type, entity_info, mqtt):
+'''def create_ha_entity(entity_type, entity_info, mqtt):
     if entity_type == "sensor":
         ha_entity_info_class = HASensorInfo
         ha_class = HASensor
@@ -39,7 +39,7 @@ def create_ha_entity(entity_type, entity_info, mqtt):
     ha_entity_info = ha_entity_info_class(**entity_info)
     ha_settings = HASettings(mqtt = mqtt, entity = ha_entity_info)
     ha_entity = ha_class(ha_settings)
-    return ha_entity
+    return ha_entity'''
 
 class Entity:
     def __init__(self, entity_type, entity_info, mqtt, create_ha_entity=True):
@@ -49,7 +49,7 @@ class Entity:
         if create_ha_entity:
             self.ha_entity = self.create_ha_entity(entity_info)
     
-    def create_ha_entity(self, entity_info):
+    def create_ha_entity(self, entity_info, callback = None):
         if self.entity_type == "sensor":
             ha_entity_info_class = HASensorInfo
             ha_class = HASensor
@@ -57,8 +57,16 @@ class Entity:
             ha_entity_info_class = HASwitchInfo
             ha_class = HASwitch
         elif self.entity_type == "button":
+            if callback is None:
+                raise ValueError("Callback must be provided for button entities")
             ha_entity_info_class = HAButtonInfo
-            ha_class = HAButton
+            def ha_class_wrapper(callback):
+                def ha_class_constructor(ha_settings):
+                    ha_entity = HAButton(ha_settings, callback)
+                    return ha_entity
+                return ha_class_constructor
+            #ha_class = HAButton
+            ha_class = ha_class_wrapper(callback)
         elif self.entity_type == "binary_sensor":
             ha_entity_info_class = HABinarySensorInfo
             ha_class = HABinarySensor
@@ -76,6 +84,12 @@ class Entity:
     def stop(self):
         pass
 
+class Button(Entity):
+    def __init__(self, entity_info, mqtt, function, create_ha_entity=True):
+        super().__init__("button", entity_info, mqtt, create_ha_entity=False)
+        self.c_button = c_entities.Button(function)
+        if create_ha_entity:
+            self.ha_entity = self.create_ha_entity(entity_info, callback=function)
 
 class PollingSensor(Entity):
     def __init__(self, entity_info, mqtt, function = None, polling_rate = 1, create_ha_entity=True, create_sensor = True):
