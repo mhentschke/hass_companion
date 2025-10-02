@@ -9,9 +9,9 @@ def cpu_freq(*args, **kwargs):
     if kwargs.get("percpu", False):
         result = []
         for core in freqs:
-            result.append(core.current)
+            result.append(round(core.current / 1000.0, 2))
     else:
-        result = freqs.current
+        result = round(freqs.current / 1000.0, 2)
     return result
 
 def virtual_memory():
@@ -20,6 +20,7 @@ def virtual_memory():
     conversion_keys = ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]
     conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
     mem_info = dict_unit_convert(mem_info, conversion_factor, conversion_keys)
+    mem_info = dict_round(mem_info, conversion_keys, 1)
     return mem_info
 
 def swap_memory():
@@ -28,6 +29,7 @@ def swap_memory():
     conversion_keys = ["total", "used", "free"]
     conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
     swap_info = dict_unit_convert(swap_info, conversion_factor, conversion_keys)
+    swap_info = dict_round(swap_info, conversion_keys, 1)
     return swap_info
 
 def disk_usage(path):
@@ -36,6 +38,7 @@ def disk_usage(path):
     conversion_keys = ["total", "used", "free"]
     conversion_factor = 1/(1024 ** 3)  # Convert bytes to GB
     disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
+    disk_info = dict_round(disk_info, conversion_keys, 1)
     return disk_info
 
 def disk_io_counters(perdisk = False, flatten = True):
@@ -51,10 +54,12 @@ def disk_io_counters(perdisk = False, flatten = True):
         disk_info = disk_info._asdict()
         disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
         disk_info = dict_unit_convert(disk_info, conversion_factor_time, conversion_keys_time)
+        disk_info = dict_round(disk_info, conversion_keys, 1)
     else:
         for drive in disk_info.keys():
             disk_info[drive] = dict_unit_convert(disk_info[drive]._asdict(), conversion_factor, conversion_keys)
             disk_info[drive] = dict_unit_convert(disk_info[drive], conversion_factor_time, conversion_keys_time)
+            disk_info[drive] = dict_round(disk_info[drive], conversion_keys, 1)
     if flatten:
         disk_info = flatten_dict(disk_info)
     return disk_info
@@ -65,6 +70,14 @@ def dict_unit_convert(d, factor, keys = None):
     for key in keys:
         if key in d:
             d[key] *= factor
+    return d
+
+def dict_round(d, keys = None, precision = 2):
+    if keys is None:
+        keys = d.keys()
+    for key in keys:
+        if key in d:
+            d[key] = round(d[key], precision)
     return d
 
 def flatten_dict(d, separator = ":"):
@@ -83,7 +96,7 @@ disk_io_last_time = time.time()
 disk_io_last_counters_perdisk = disk_io_counters(perdisk = True, flatten = False)
 disk_io_last_time_perdisk = time.time()
 
-def disk_io_rates(perdisk = False):
+def disk_io_rates(perdisk = False, include = None, exclude = None):
     global disk_io_last_counters, disk_io_last_time, disk_io_last_counters_perdisk, disk_io_last_time_perdisk
     disk_info = disk_io_counters(perdisk=perdisk, flatten = False)
     key_map = {
@@ -103,8 +116,7 @@ def disk_io_rates(perdisk = False):
         for key in metrics:
             if key in disk_info:
                 disk_rates[key_map[key]] = (disk_info[key] - disk_io_last_counters[key]) / (current_time - disk_io_last_time)
-                if key in ["read_time", "write_time", "busy_time"]:
-                    disk_rates[key_map[key]] *= 100
+        disk_rates = dict_unit_convert(disk_rates, 100, ["read_percentage", "write_percentage", "busy_percentage"])
         disk_io_last_counters = disk_info
         disk_io_last_time = current_time
     else:
@@ -113,12 +125,11 @@ def disk_io_rates(perdisk = False):
             for key in metrics:
                 if key in disk_info[drive]:
                     disk_rates[drive][key_map[key]] = (disk_info[drive][key] - disk_io_last_counters_perdisk[drive][key]) / (current_time - disk_io_last_time_perdisk)
-                    if key in ["read_time", "write_time", "busy_time"]:
-                        disk_rates[drive][key_map[key]] *= 100
+            disk_rates[drive] = dict_unit_convert(disk_rates[drive], 100, ["read_percentage", "write_percentage", "busy_percentage"])
         disk_io_last_counters_perdisk = disk_info
         disk_io_last_time_perdisk = current_time
 
-    return flatten_dict(disk_rates)
+    return flatten_dict(dict_round(disk_rates, precision=2))
 
 def net_io_counters():
     """Parse network IO counters."""
@@ -158,6 +169,7 @@ def sensors_temperatures():
         result[key] = {}
         for entry in value:
             result[key + ":" + entry.label] = entry.current
+    result = dict_round(result, precision=1)
     return result
 
 def sensors_fans():
@@ -168,6 +180,7 @@ def sensors_fans():
         result[key] = {}
         for entry in value:
             result[key + ":" + entry.label] = entry.current
+    result = dict_round(result, precision=1)
     return result
 
 processes_cache = {}

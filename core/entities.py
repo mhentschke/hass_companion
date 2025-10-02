@@ -119,7 +119,7 @@ class MultiPollingSensor(PollingSensor):
             self.ha_entity = {}
             for key in function_result.keys():
                 ha_entity_info = copy.deepcopy(entity_info)
-                ha_entity_info["name"] += f" {key}"
+                ha_entity_info["name"] += f" {(key)}"
                 ha_entity_info["unique_id"] += f"_{key}"
                 if units_of_measurement is not None:
                     if key in units_of_measurement.keys():

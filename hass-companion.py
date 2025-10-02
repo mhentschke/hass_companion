@@ -312,7 +312,7 @@ def load_system_entities(entity_configs, mqtt_settings):
         if "freq" in cpu_config:
             entity_info_kwargs = {
                 "name": "CPU Frequency",
-                "unit_of_measurement": "MHz",
+                "unit_of_measurement": "GHz",
                 "unique_id": "cpu_freq", 
                 "icon": "mdi:cpu-64-bit",
                 "device": device,
