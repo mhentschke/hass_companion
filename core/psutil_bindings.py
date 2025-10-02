@@ -38,20 +38,26 @@ def disk_usage(path):
     disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
     return disk_info
 
-def disk_io_counters(perdisk = False):
+def disk_io_counters(perdisk = False, flatten = True):
     """Parse disk IO counters."""
     disk_info = psutil.disk_io_counters(perdisk = perdisk)#._asdict()
     conversion_keys = ["read_count", "write_count", "read_bytes", "write_bytes"]
     conversion_factor = 1/(1024 ** 3)  # Convert bytes to GB)
+
+    conversion_keys_time = ["read_time", "write_time", "busy_time"]
+    conversion_factor_time = 1/1000  # Convert ms to s
     
     if not perdisk:
         disk_info = disk_info._asdict()
         disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
+        disk_info = dict_unit_convert(disk_info, conversion_factor_time, conversion_keys_time)
     else:
         for drive in disk_info.keys():
             disk_info[drive] = dict_unit_convert(disk_info[drive]._asdict(), conversion_factor, conversion_keys)
-
-    return flatten_dict(disk_info)
+            disk_info[drive] = dict_unit_convert(disk_info[drive], conversion_factor_time, conversion_keys_time)
+    if flatten:
+        disk_info = flatten_dict(disk_info)
+    return disk_info
 
 def dict_unit_convert(d, factor, keys = None):
     if keys is None:
@@ -74,24 +80,44 @@ def flatten_dict(d, separator = ":"):
 
 disk_io_last_counters = disk_io_counters()
 disk_io_last_time = time.time()
+disk_io_last_counters_perdisk = disk_io_counters(perdisk = True, flatten = False)
+disk_io_last_time_perdisk = time.time()
 
 def disk_io_rates(perdisk = False):
-    disk_info = disk_io_counters(perdisk=perdisk)
+    global disk_io_last_counters, disk_io_last_time, disk_io_last_counters_perdisk, disk_io_last_time_perdisk
+    disk_info = disk_io_counters(perdisk=perdisk, flatten = False)
     key_map = {
         "read_count": "read_rate",
         "write_count": "write_rate",
         "read_bytes": "read_byte_rate",
         "write_bytes": "write_byte_rate",
-        "read_time": "read_ratio",
-        "write_time": "write_ratio",
-        "busy_time": "busy_ratio",
+        "read_time": "read_percentage",
+        "write_time": "write_percentage",
+        "busy_time": "busy_percentage",
     }
     # calculate rates
     disk_rates = {}
-    for key in ["read_count", "write_count", "read_bytes", "write_bytes", "read_time", "write_time", "busy_time"]:
-        if key in disk_info:
-            disk_rates[key_map[key]] = (disk_info[key] - disk_io_last_counters[key]) / (time.time() - disk_io_last_time)
-    return disk_rates
+    current_time = time.time()
+    metrics = ["read_count", "write_count", "read_bytes", "write_bytes", "read_time", "write_time", "busy_time"]
+    if not perdisk:
+        for key in metrics:
+            if key in disk_info:
+                print(key, disk_info[key], disk_io_last_counters[key], current_time - disk_io_last_time)
+                disk_rates[key_map[key]] = (disk_info[key] - disk_io_last_counters[key]) / (current_time - disk_io_last_time)
+                if key in ["read_time", "write_time", "busy_time"]:
+                    disk_rates[key_map[key]] *= 100
+        disk_io_last_counters = disk_info
+        disk_io_last_time = current_time
+    else:
+        for drive in disk_info.keys():
+            disk_rates[drive] = {}
+            for key in metrics:
+                if key in disk_info[drive]:
+                    disk_rates[drive][key_map[key]] = (disk_info[drive][key] - disk_io_last_counters_perdisk[drive][key]) / (current_time - disk_io_last_time_perdisk)
+        disk_io_last_counters_perdisk = disk_info
+        disk_io_last_time_perdisk = current_time
+
+    return flatten_dict(disk_rates)
 
 def net_io_counters():
     """Parse network IO counters."""
