@@ -102,7 +102,6 @@ def disk_io_rates(perdisk = False):
     if not perdisk:
         for key in metrics:
             if key in disk_info:
-                print(key, disk_info[key], disk_io_last_counters[key], current_time - disk_io_last_time)
                 disk_rates[key_map[key]] = (disk_info[key] - disk_io_last_counters[key]) / (current_time - disk_io_last_time)
                 if key in ["read_time", "write_time", "busy_time"]:
                     disk_rates[key_map[key]] *= 100
@@ -114,6 +113,8 @@ def disk_io_rates(perdisk = False):
             for key in metrics:
                 if key in disk_info[drive]:
                     disk_rates[drive][key_map[key]] = (disk_info[drive][key] - disk_io_last_counters_perdisk[drive][key]) / (current_time - disk_io_last_time_perdisk)
+                    if key in ["read_time", "write_time", "busy_time"]:
+                        disk_rates[drive][key_map[key]] *= 100
         disk_io_last_counters_perdisk = disk_info
         disk_io_last_time_perdisk = current_time
 

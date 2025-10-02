@@ -376,7 +376,7 @@ def load_system_entities(entity_configs, mqtt_settings):
                 entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.disk_io_counters, polling_rate=1, units_of_measurement=units)
                 entities.append(entity)
                 if storage_config["io"].get("rates", False):
-                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_ratio": "s", "write_ratio": "s", "busy_ratio": "s"}
+                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
                     entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.disk_io_rates, polling_rate=1, units_of_measurement=units)
                     entities.append(entity)
             if storage_config["io"].get("per_disk", True):
@@ -387,11 +387,12 @@ def load_system_entities(entity_configs, mqtt_settings):
                     "icon": "mdi:hard-drive",
                     "device": device,
                 }
-                units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True), polling_rate=1, units_of_measurement=units)
-                entities.append(entity)
+                if storage_config["io"].get("counters", False):
+                    units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
+                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True), polling_rate=1, units_of_measurement=units)
+                    entities.append(entity)
                 if storage_config["io"].get("rates", False):
-                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_ratio": "s", "write_ratio": "s", "busy_ratio": "s"}
+                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
                     entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True), polling_rate=1, units_of_measurement=units)
                     entities.append(entity)
 
