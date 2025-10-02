@@ -184,7 +184,13 @@ def create_select(entity_config, mqtt_settings):
         entity.select(value)
     ha_entity = HASelect(ha_settings, select_callback)
     ha_entity.write_config()
-    entity.sensor.result_callback = ha_entity.set_options
+    def select_option_sanitized(option):
+        try:
+            ha_entity.select_option(option)
+        except RuntimeError as e:
+            print(f"Errror selecting option: {e}")
+
+    entity.sensor.result_callback = select_option_sanitized
     return entity, ha_entity
 
 
@@ -375,22 +381,21 @@ def load_system_entities(entity_configs, mqtt_settings):
                     entities.append(entity)
             if storage_config["io"].get("per_disk", True):
                 disks = psutil.disk_partitions()
-                for disk in disks:
-                    entity_info_kwargs = {
-                        "name": f"Disk IO {disk.device}:{disk.mountpoint}",
-                        "unique_id": f"disk_io {disk.device}:{disk.mountpoint}",
-                        "icon": "mdi:hard-drive",
-                        "device": device,
-                    }
-                    units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True), polling_rate=1, units_of_measurement=units)
+                entity_info_kwargs = {
+                    "name": f"Disk IO",
+                    "unique_id": f"disk_io_",
+                    "icon": "mdi:hard-drive",
+                    "device": device,
+                }
+                units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True), polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+                if storage_config["io"].get("rates", False):
+                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_ratio": "s", "write_ratio": "s", "busy_ratio": "s"}
+                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True), polling_rate=1, units_of_measurement=units)
                     entities.append(entity)
-                    if storage_config["io"].get("rates", False):
-                        units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_ratio": "s", "write_ratio": "s", "busy_ratio": "s"}
-                        entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True), polling_rate=1, units_of_measurement=units)
-                        entities.append(entity)
 
-    if "network" in entity_configs:
+    '''if "network" in entity_configs:
         network_config = entity_configs["network"]
         if "io" in network_config:
             entity_info_kwargs = {
@@ -420,7 +425,7 @@ def load_system_entities(entity_configs, mqtt_settings):
                 if network_config["io"].get("rates", False):
                     units = {"bytes_sent_rate": "B/s", "bytes_recv_rate": "B/s", "packets_sent_rate": "packets/s", "packets_recv_rate": "packets/s", "errin_rate": "errors/s", "errout_rate": "errors/s", "dropin_rate": "drops/s", "dropout_rate": "drops/s"}
                     entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.net_io_rates, pernic = True), polling_rate=1, units_of_measurement=units)
-                    entities.append(entity)
+                    entities.append(entity)'''
 
     if "sensors" in entity_configs:
         sensors_config = entity_configs["sensors"]
@@ -448,7 +453,7 @@ def load_system_entities(entity_configs, mqtt_settings):
             entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.sensors_fans, polling_rate=1, units_of_measurement=units)
             entities.append(entity)
 
-    if "process" in entity_configs:
+    '''if "process" in entity_configs:
         process_config = entity_configs["process"]
         for process_name in process_config["processes"].keys():
             pattern = process_config["processes"][process_name]["pattern"]
@@ -494,7 +499,7 @@ def load_system_entities(entity_configs, mqtt_settings):
                         "icon": "mdi:process",
                         "device": device,
                     }
-                    entity = core_entities.Button(entity_info_kwargs, mqtt_settings, function=process.kill)
+                    entity = core_entities.Button(entity_info_kwargs, mqtt_settings, function=process.kill)'''
 
 
     return entities, ha_entities        

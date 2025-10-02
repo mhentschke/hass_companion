@@ -1,6 +1,7 @@
 import psutil
 import time
 import re
+import copy
 
 def cpu_freq(*args, **kwargs):
     """Parse CPU frequency information."""
@@ -16,41 +17,66 @@ def cpu_freq(*args, **kwargs):
 def virtual_memory():
     """Parse virtual memory information."""
     mem_info = psutil.virtual_memory()._asdict()
-    # Convert All units to MB for simplicity
-    for key in ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]:
-        if key in mem_info:
-            mem_info[key] /= (1024 ** 2)  # Convert bytes to MB
+    conversion_keys = ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]
+    conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
+    mem_info = dict_unit_convert(mem_info, conversion_factor, conversion_keys)
     return mem_info
 
 def swap_memory():
     """Parse swap memory information."""
     swap_info = psutil.swap_memory()._asdict()
-    for key in ["total", "free", "used"]:
-        if key in swap_info:
-            swap_info[key] /= (1024 ** 2)  # Convert bytes to MB
+    conversion_keys = ["total", "used", "free"]
+    conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
+    swap_info = dict_unit_convert(swap_info, conversion_factor, conversion_keys)
     return swap_info
 
 def disk_usage(path):
     """Parse disk usage information."""
     disk_info = psutil.disk_usage(path)._asdict()
-    for key in ["total", "free", "used"]:
-        if key in disk_info:
-            disk_info[key] /= (1024 ** 3)  # Convert bytes to GB
+    conversion_keys = ["total", "used", "free"]
+    conversion_factor = 1/(1024 ** 3)  # Convert bytes to GB
+    disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
     return disk_info
 
-def disk_io_counters():
+def disk_io_counters(perdisk = False):
     """Parse disk IO counters."""
-    disk_info = psutil.disk_io_counters()._asdict()
-    for key in ["read_count", "write_count", "read_bytes", "write_bytes", "read_time", "write_time", "busy_time"]:
-        if key in disk_info:
-            disk_info[key] /= (1024 ** 3)  # Convert bytes to GB
-    return disk_info
+    disk_info = psutil.disk_io_counters(perdisk = perdisk)#._asdict()
+    conversion_keys = ["read_count", "write_count", "read_bytes", "write_bytes"]
+    conversion_factor = 1/(1024 ** 3)  # Convert bytes to GB)
+    
+    if not perdisk:
+        disk_info = disk_info._asdict()
+        disk_info = dict_unit_convert(disk_info, conversion_factor, conversion_keys)
+    else:
+        for drive in disk_info.keys():
+            disk_info[drive] = dict_unit_convert(disk_info[drive]._asdict(), conversion_factor, conversion_keys)
+
+    return flatten_dict(disk_info)
+
+def dict_unit_convert(d, factor, keys = None):
+    if keys is None:
+        keys = d.keys()
+    for key in keys:
+        if key in d:
+            d[key] *= factor
+    return d
+
+def flatten_dict(d, separator = ":"):
+    keys = copy.deepcopy(list(d.keys()))
+    for key in keys:
+        if isinstance(d[key], dict):
+            for subkey in d[key].keys():
+                d[f"{key}{separator}{subkey}"] = d[key][subkey]
+            # remove the key
+            del d[key]
+    return d
+            
 
 disk_io_last_counters = disk_io_counters()
 disk_io_last_time = time.time()
 
-def disk_io_rates():
-    disk_info = disk_io_counters()
+def disk_io_rates(perdisk = False):
+    disk_info = disk_io_counters(perdisk=perdisk)
     key_map = {
         "read_count": "read_rate",
         "write_count": "write_rate",
@@ -70,9 +96,9 @@ def disk_io_rates():
 def net_io_counters():
     """Parse network IO counters."""
     net_info = psutil.net_io_counters()._asdict()
-    for key in ["bytes_sent", "bytes_recv", "packets_sent", "packets_recv", "errin", "errout", "dropin", "dropout"]:
-        if key in net_info:
-            net_info[key] /= (1024 ** 2)  # Convert bytes to MB
+    conversion_keys = ["bytes_sent", "bytes_recv"]
+    conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
+    net_info = dict_unit_convert(net_info, conversion_factor, conversion_keys)
     return net_info
     
 net_io_last_counters = net_io_counters()
@@ -134,7 +160,7 @@ def get_process(pattern):
 
 def process_sensors(pattern):
     proc = get_process(pattern)
-    stats = {"status": "Not Running", "cpu_percent", 0.0, "memory_percent": 0.0, "memory_rss": 0.0, "memory_vms": 0.0}
+    stats = {"status": "Not Running", "cpu_percent": 0.0, "memory_percent": 0.0, "memory_rss": 0.0, "memory_vms": 0.0}
     if proc is not None:
         proc = processes_cache[pattern]
         with proc.oneshot():

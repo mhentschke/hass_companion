@@ -106,7 +106,7 @@ class CommandSensor(Sensor):
     def polling_thread(self):
         while not self.exit.is_set():
             # execute command
-            self.update(subprocess.run([self.shell, "-c", self.command], stdout = subprocess.PIPE).stdout.decode("utf-8"))
+            self.update(subprocess.run(["/bin/bash", "--noprofile", "--norc", "-c", self.command], stdout = subprocess.PIPE).stdout.decode("utf-8"))
             
             # wait for next polling time
             self.exit.wait(timeout = self.polling_time)
