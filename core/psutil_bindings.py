@@ -41,7 +41,7 @@ def disk_usage(path):
     disk_info = dict_round(disk_info, conversion_keys, 1)
     return disk_info
 
-def disk_io_counters(perdisk = False, flatten = True):
+def disk_io_counters(perdisk = False, flatten = True, include = [], exclude = []):
     """Parse disk IO counters."""
     disk_info = psutil.disk_io_counters(perdisk = perdisk)#._asdict()
     conversion_keys = ["read_count", "write_count", "read_bytes", "write_bytes"]
@@ -56,6 +56,7 @@ def disk_io_counters(perdisk = False, flatten = True):
         disk_info = dict_unit_convert(disk_info, conversion_factor_time, conversion_keys_time)
         disk_info = dict_round(disk_info, conversion_keys, 1)
     else:
+        disk_info = filter_dict(disk_info, include, exclude)
         for drive in disk_info.keys():
             disk_info[drive] = dict_unit_convert(disk_info[drive]._asdict(), conversion_factor, conversion_keys)
             disk_info[drive] = dict_unit_convert(disk_info[drive], conversion_factor_time, conversion_keys_time)
@@ -77,7 +78,10 @@ def dict_round(d, keys = None, precision = 2):
         keys = d.keys()
     for key in keys:
         if key in d:
-            d[key] = round(d[key], precision)
+            if isinstance(d[key], dict):
+                d[key] = dict_round(d[key], precision = precision)
+            elif isinstance(d[key], float):
+                d[key] = round(d[key], precision)
     return d
 
 def flatten_dict(d, separator = ":"):
@@ -89,16 +93,51 @@ def flatten_dict(d, separator = ":"):
             # remove the key
             del d[key]
     return d
-            
 
-disk_io_last_counters = disk_io_counters()
-disk_io_last_time = time.time()
-disk_io_last_counters_perdisk = disk_io_counters(perdisk = True, flatten = False)
-disk_io_last_time_perdisk = time.time()
+def filter_dict(d, include = [], exclude = []):
+    result = {}
+    if exclude == [] and include == []:
+        return d
+    elif include == []:
+        for pattern in exclude:
+            # regex match
+            if not "^" in pattern:
+                pattern = "^" + pattern
+            if not "$" in pattern:
+                pattern += "$"
+            matcher = re.compile(pattern)
+            if isinstance(pattern, str):
+                original_keys = copy.deepcopy(list(d.keys()))
+                for k in original_keys:
+                    if not matcher.match(k):
+                        result[k] = d[k]
+    else:
+
+        for pattern in include:
+            # regex match
+            if isinstance(pattern, str):
+                if not "^" in pattern:
+                    pattern = "^" + pattern
+                if not "$" in pattern:
+                    pattern += "$"
+                matcher = re.compile(pattern)
+                original_keys = copy.deepcopy(list(d.keys()))
+                for k in original_keys:
+                    if matcher.match(k):
+                        result[k] = d[k]
+    return result
+
+
+disk_io_last_counters = None
+disk_io_last_time = None
+disk_io_last_counters_perdisk = None
+disk_io_last_time_perdisk = None           
+
+
 
 def disk_io_rates(perdisk = False, include = None, exclude = None):
     global disk_io_last_counters, disk_io_last_time, disk_io_last_counters_perdisk, disk_io_last_time_perdisk
-    disk_info = disk_io_counters(perdisk=perdisk, flatten = False)
+    disk_info = disk_io_counters(perdisk=perdisk, flatten = False, include = include, exclude = exclude)
     key_map = {
         "read_count": "read_rate",
         "write_count": "write_rate",
@@ -113,6 +152,10 @@ def disk_io_rates(perdisk = False, include = None, exclude = None):
     current_time = time.time()
     metrics = ["read_count", "write_count", "read_bytes", "write_bytes", "read_time", "write_time", "busy_time"]
     if not perdisk:
+        if not disk_io_last_counters:
+            disk_io_last_counters = disk_info
+            disk_io_last_time = current_time-1
+
         for key in metrics:
             if key in disk_info:
                 disk_rates[key_map[key]] = (disk_info[key] - disk_io_last_counters[key]) / (current_time - disk_io_last_time)
@@ -120,6 +163,10 @@ def disk_io_rates(perdisk = False, include = None, exclude = None):
         disk_io_last_counters = disk_info
         disk_io_last_time = current_time
     else:
+        if not disk_io_last_counters_perdisk:
+            disk_io_last_counters_perdisk = disk_info
+            disk_io_last_time_perdisk = current_time-1
+
         for drive in disk_info.keys():
             disk_rates[drive] = {}
             for key in metrics:
