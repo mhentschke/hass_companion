@@ -284,6 +284,117 @@ def create_ha_entity(entity_type, entity_info, mqtt):
     ha_entity = ha_class(ha_settings)
     return ha_entity
 
+def load_system_cpu_entities(cpu_config, mqtt_settings, ha_device):
+    entities = []
+    if "percent" in cpu_config:
+        entity_info_kwargs = {
+            "name": "CPU Usage",
+            "unit_of_measurement": "%", 
+            "unique_id": "cpu_usage",
+            "icon": "mdi:cpu-64-bit",
+            "device": ha_device,
+        }
+        if cpu_config["percent"].get("total", True):
+            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.cpu_percent, polling_rate=1)
+            entities.append(entity)
+        
+        if cpu_config["percent"].get("per_cpu", False):
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, partial(psutil.cpu_percent, percpu = True), polling_rate=1)
+            entities.append(entity)
+    
+    if "freq" in cpu_config:
+        entity_info_kwargs = {
+            "name": "CPU Frequency",
+            "unit_of_measurement": "GHz",
+            "unique_id": "cpu_freq", 
+            "icon": "mdi:cpu-64-bit",
+            "device": ha_device,
+        }
+        if cpu_config["freq"].get("total", False):
+            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.cpu_freq, polling_rate=1)
+            entities.append(entity)
+        if cpu_config["freq"].get("per_cpu", False):
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.cpu_freq, percpu = True), polling_rate=1)
+            entities.append(entity)
+    return entities
+
+def load_system_memory_entities(memory_config, mqtt_settings, ha_device):
+    entities = []
+    
+    if "virtual" in memory_config:
+        entity_info_kwargs = {
+            "name": "Memory Virtual",
+            "unique_id": "memory_virtual",
+            "icon": "mdi:memory",
+            "device": ha_device,
+        }
+        units = {key: "MB" for key in ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]}
+        units["percent"] = "%"
+        entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.virtual_memory, polling_rate=1, units_of_measurement=units)
+        entities.append(entity)
+
+    if "swap" in memory_config:
+        entity_info_kwargs = {
+            "name": "Memory Swap",
+            "unique_id": "memory_swap",
+            "icon": "mdi:swap-horizontal",
+            "device": ha_device,
+        }
+        units = {key: "MB" for key in ["total", "used", "free"]}
+        units["percent"] = "%"
+        entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.swap_memory, polling_rate=1, units_of_measurement=units)
+        entities.append(entity)
+    return entities
+
+def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
+    entities = []
+    if "usage" in storage_config:
+        disks = psutil.disk_partitions()
+        for disk in disks:
+            entity_info_kwargs = {
+                "name": f"Disk Usage {disk.device}:{disk.mountpoint}",
+                "unique_id": f"disk_usage {disk.device}:{disk.mountpoint}",
+                "icon": "mdi:hard-drive",
+                "device": ha_device,
+            }
+            units = {key: "GB" for key in ["total", "used", "free"]}
+            units["percent"] = "%"
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_usage, disk.mountpoint), polling_rate=1/60.0, units_of_measurement=units)
+            entities.append(entity)
+    if "io" in storage_config:
+        entity_info_kwargs = {
+            "name": "Disk IO",
+            "unique_id": "disk_io",
+            "icon": "mdi:hard-drive",
+            "device": ha_device,                    
+        }
+        if storage_config["io"].get("total", True):
+            units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.disk_io_counters, polling_rate=1, units_of_measurement=units)
+            entities.append(entity)
+            if storage_config["io"].get("rates", False):
+                units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
+
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.disk_io_rates, polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+        if storage_config["io"].get("per_disk", True):
+            include = storage_config["io"].get("filters", {}).get("include", [])
+            exclude = storage_config["io"].get("filters", {}).get("exclude", [])
+            entity_info_kwargs = {
+                "name": f"Disk IO",
+                "unique_id": f"disk_io_",
+                "icon": "mdi:hard-drive",
+                "device": ha_device,
+            }
+            if storage_config["io"].get("counters", False):
+                units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+            if storage_config["io"].get("rates", False):
+                units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
+                entities.append(entity)
+
 
 
 def load_system_entities(entity_configs, mqtt_settings):
@@ -292,111 +403,13 @@ def load_system_entities(entity_configs, mqtt_settings):
     device = ha_device
     
     if "cpu" in entity_configs:
-        cpu_config = entity_configs["cpu"]
-        if "percent" in cpu_config:
-            entity_info_kwargs = {
-                "name": "CPU Usage",
-                "unit_of_measurement": "%", 
-                "unique_id": "cpu_usage",
-                "icon": "mdi:cpu-64-bit",
-                "device": device,
-            }
-            if cpu_config["percent"].get("total", True):
-                entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.cpu_percent, polling_rate=1)
-                entities.append(entity)
-            
-            if cpu_config["percent"].get("per_cpu", False):
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, partial(psutil.cpu_percent, percpu = True), polling_rate=1)
-                entities.append(entity)
-        
-        if "freq" in cpu_config:
-            entity_info_kwargs = {
-                "name": "CPU Frequency",
-                "unit_of_measurement": "GHz",
-                "unique_id": "cpu_freq", 
-                "icon": "mdi:cpu-64-bit",
-                "device": device,
-            }
-            if cpu_config["freq"].get("total", False):
-                entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.cpu_freq, polling_rate=1)
-                entities.append(entity)
-            if cpu_config["freq"].get("per_cpu", False):
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.cpu_freq, percpu = True), polling_rate=1)
-                entities.append(entity)
+        entities += load_system_cpu_entities(entity_configs["cpu"], mqtt_settings)
 
     if "memory" in entity_configs:
-        memory_config = entity_configs["memory"]
-        if "virtual" in memory_config:
-            entity_info_kwargs = {
-                "name": "Memory Virtual",
-                "unique_id": "memory_virtual",
-                "icon": "mdi:memory",
-                "device": device,
-            }
-            units = {key: "MB" for key in ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]}
-            units["percent"] = "%"
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.virtual_memory, polling_rate=1, units_of_measurement=units)
-            entities.append(entity)
-        if "swap" in memory_config:
-            entity_info_kwargs = {
-                "name": "Memory Swap",
-                "unique_id": "memory_swap",
-                "icon": "mdi:swap-horizontal", 
-                "device": device,
-            }
-            units = {key: "MB" for key in ["total", "used", "free"]}
-            units["percent"] = "%"
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.swap_memory, polling_rate=1, units_of_measurement=units)
-            entities.append(entity)
+        entities += load_system_memory_entities(entity_configs["memory"], mqtt_settings, device)
 
     if "storage" in entity_configs:
-        storage_config = entity_configs["storage"]
-        if "usage" in storage_config:
-            disks = psutil.disk_partitions()
-            for disk in disks:
-                entity_info_kwargs = {
-                    "name": f"Disk Usage {disk.device}:{disk.mountpoint}",
-                    "unique_id": f"disk_usage {disk.device}:{disk.mountpoint}",
-                    "icon": "mdi:hard-drive",
-                    "device": device,
-                }
-                units = {key: "GB" for key in ["total", "used", "free"]}
-                units["percent"] = "%"
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_usage, disk.mountpoint), polling_rate=1/60.0, units_of_measurement=units)
-                entities.append(entity)
-        if "io" in storage_config:
-            entity_info_kwargs = {
-                "name": "Disk IO",
-                "unique_id": "disk_io",
-                "icon": "mdi:hard-drive",
-                "device": device,                    
-            }
-            if storage_config["io"].get("total", True):
-                units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.disk_io_counters, polling_rate=1, units_of_measurement=units)
-                entities.append(entity)
-                if storage_config["io"].get("rates", False):
-                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
-
-                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.disk_io_rates, polling_rate=1, units_of_measurement=units)
-                    entities.append(entity)
-            if storage_config["io"].get("per_disk", True):
-                include = storage_config["io"].get("filters", {}).get("include", [])
-                exclude = storage_config["io"].get("filters", {}).get("exclude", [])
-                entity_info_kwargs = {
-                    "name": f"Disk IO",
-                    "unique_id": f"disk_io_",
-                    "icon": "mdi:hard-drive",
-                    "device": device,
-                }
-                if storage_config["io"].get("counters", False):
-                    units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
-                    entities.append(entity)
-                if storage_config["io"].get("rates", False):
-                    units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
-                    entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
-                    entities.append(entity)
+        entities += load_system_storage_entities(entity_configs["storage"], mqtt_settings, device)
 
     '''if "network" in entity_configs:
         network_config = entity_configs["network"]
