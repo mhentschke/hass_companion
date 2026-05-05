@@ -175,3 +175,67 @@ class TestParserChaining:
         result = regex_parser.parse("count: 7")
         result = int_parser.parse(result)
         assert result == 7
+
+
+# --- build_pipeline factory ---
+
+from core.parsers import build_pipeline
+from core.config import ParserConfig
+
+
+class TestBuildPipeline:
+    def test_empty_config_returns_empty_list(self):
+        assert build_pipeline([]) == []
+
+    def test_simple_type_parsers(self):
+        configs = [
+            ParserConfig(type="int"),
+            ParserConfig(type="float"),
+            ParserConfig(type="bool"),
+            ParserConfig(type="string"),
+        ]
+        pipeline = build_pipeline(configs)
+        assert len(pipeline) == 4
+        assert isinstance(pipeline[0], IntResultParser)
+        assert isinstance(pipeline[1], FloatResultParser)
+        assert isinstance(pipeline[2], BoolResultParser)
+        assert isinstance(pipeline[3], StringResultParser)
+
+    def test_regex_parser(self):
+        configs = [ParserConfig(type="regex", regex=r"(\d+)", group=1)]
+        pipeline = build_pipeline(configs)
+        assert len(pipeline) == 1
+        assert isinstance(pipeline[0], RegexResultParser)
+        assert pipeline[0].parse("value 42") == "42"
+
+    def test_compare_parser(self):
+        configs = [ParserConfig(type="compare", operator=">", value=10)]
+        pipeline = build_pipeline(configs)
+        assert len(pipeline) == 1
+        assert isinstance(pipeline[0], CompareResultParser)
+        assert pipeline[0].parse(15) is True
+
+    def test_state_map_parser(self):
+        configs = [ParserConfig(type="state_map", map={"on": "running"})]
+        pipeline = build_pipeline(configs)
+        assert len(pipeline) == 1
+        assert isinstance(pipeline[0], StateMapResultParser)
+        assert pipeline[0].parse("on") == "running"
+
+    def test_unknown_type_raises_valueerror(self):
+        configs = [ParserConfig.model_construct(type="nonexistent")]
+        with pytest.raises(ValueError, match="Unknown parser type"):
+            build_pipeline(configs)
+
+    def test_full_pipeline_execution(self):
+        """Build a regex -> int -> compare pipeline and run data through it."""
+        configs = [
+            ParserConfig(type="regex", regex=r"temp=(\d+)", group=1),
+            ParserConfig(type="int"),
+            ParserConfig(type="compare", operator=">", value=30),
+        ]
+        pipeline = build_pipeline(configs)
+        result = "temp=35"
+        for parser in pipeline:
+            result = parser.parse(result)
+        assert result is True

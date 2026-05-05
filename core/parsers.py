@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from core.config import ParserConfig
+
+
 class ResultParser:
     def __init__(self):
         pass
@@ -69,3 +77,41 @@ class StateMapResultParser(ResultParser):
         self.mapping = mapping
     def parse(self, text):
         return self.mapping.get(text, text)
+
+# --- Parser Factory ---
+
+_PARSER_REGISTRY: dict[str, type | Callable] = {
+    "int": IntResultParser,
+    "float": FloatResultParser,
+    "bool": BoolResultParser,
+    "string": StringResultParser,
+    "regex": lambda cfg: RegexResultParser(cfg.regex, cfg.group),
+    "compare": lambda cfg: CompareResultParser(cfg.value, cfg.operator),
+    "state_map": lambda cfg: StateMapResultParser(cfg.map),
+}
+
+
+def build_pipeline(parser_configs: list[ParserConfig]) -> list[ResultParser]:
+    """Build an ordered list of parser instances from config objects.
+
+    Args:
+        parser_configs: List of ParserConfig objects specifying parser type and params.
+
+    Returns:
+        Ordered list of instantiated ResultParser objects.
+
+    Raises:
+        ValueError: If a parser config specifies an unrecognized type.
+    """
+    pipeline: list[ResultParser] = []
+    for cfg in parser_configs:
+        factory = _PARSER_REGISTRY.get(cfg.type)
+        if factory is None:
+            raise ValueError(f"Unknown parser type: '{cfg.type}'")
+        # Simple types (int, float, bool, string) are classes with no-arg constructors.
+        # Complex types (regex, compare, state_map) are lambdas that accept cfg.
+        if callable(factory) and isinstance(factory, type):
+            pipeline.append(factory())
+        else:
+            pipeline.append(factory(cfg))
+    return pipeline
