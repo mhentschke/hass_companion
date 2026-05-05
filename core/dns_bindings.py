@@ -1,5 +1,8 @@
 import subprocess
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 dns_lookup_regex = re.compile(r"Query time: ([\d.]+) msec")
 

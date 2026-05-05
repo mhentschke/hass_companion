@@ -1,7 +1,10 @@
 import subprocess
 import threading
+import logging
 from bidict import bidict
 from . import parsers
+
+logger = logging.getLogger(__name__)
 
 class Sensor():
     def __init__(self, result_callback):
@@ -100,7 +103,7 @@ class CommandSensor(Sensor):
         self.start()
 
     def start(self):
-        print("Starting command sensor")
+        logger.info("Starting command sensor: %s", self.command)
         self.thread.start()
 
     def polling_thread(self):
@@ -123,7 +126,7 @@ class CommandSensor(Sensor):
             for p in self.parsers:
                 result = p.parse(result) # apply parsers to result
         self.result_callback(result)
-        print("Updating Sensor. Raw value: ", value, "Parsed value: ", result)
+        logger.debug("Sensor update: raw=%s parsed=%s", value, result)
 
     def stop(self):
         self.exit.set()

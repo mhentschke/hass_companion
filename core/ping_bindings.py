@@ -1,5 +1,8 @@
 import subprocess
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 ping_time_regex = re.compile(r"time=([\d.]+) ms")
 ping_packet_loss_regex = re.compile(r"([\d.]+)% packet loss")
@@ -27,7 +30,7 @@ def parse_ping(result):
         ping_time = float(ping_time_regex.search(result[1]).group(1))
         result_dict["time"] = ping_time
     except AttributeError:
-        print("Ping failed")
+        logger.warning("Ping failed for host")
     ping_packet_loss = float(ping_packet_loss_regex.search(result[-3]).group(1))
     result_dict["packet_loss"] = ping_packet_loss
     return result_dict

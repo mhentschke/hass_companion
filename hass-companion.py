@@ -17,6 +17,19 @@ import core.companion_entities as c_entities
 import core.parsers as parsers
 import core.psutil_bindings as psutil_bindings
 import core.entities as core_entities
+from core.config import (
+    load_config,
+    DEFAULT_SENSOR_INTERVAL,
+    DEFAULT_BINARY_SENSOR_INTERVAL,
+    DEFAULT_SWITCH_FEEDBACK_INTERVAL,
+    DEFAULT_SELECT_FEEDBACK_INTERVAL,
+    DEFAULT_SYSTEM_CPU_INTERVAL,
+    DEFAULT_SYSTEM_MEMORY_INTERVAL,
+    DEFAULT_SYSTEM_DISK_USAGE_INTERVAL,
+    DEFAULT_SYSTEM_DISK_IO_INTERVAL,
+    DEFAULT_SYSTEM_TEMPS_INTERVAL,
+    DEFAULT_SYSTEM_FANS_INTERVAL,
+)
 import paho.mqtt.client as mqtt_client
 import threading
 import subprocess
@@ -26,6 +39,7 @@ import signal
 import sys
 import re
 import os
+import logging
 import psutil
 from functools import partial
 from typing import Any
@@ -35,39 +49,44 @@ from bidict import bidict
 from collections.abc import Iterable
 import copy
 
-load_dotenv() 
-
-_var_matcher = re.compile(r"\${([^}^{]+)}")
-_tag_matcher = re.compile(r"[^$]*\${([^}^{]+)}.*")
+logger = logging.getLogger(__name__)
 
 
-def _path_constructor(_loader: Any, node: Any):
-    def replace_fn(match):
-        envparts = f"{match.group(1)}:".split(":")
-        return os.environ.get(envparts[0], envparts[1])
-    return _var_matcher.sub(replace_fn, node.value)
+def setup_logging():
+    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, None)
+    if not isinstance(level, int):
+        level = logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
-yaml.add_implicit_resolver("!envvar", _tag_matcher, None, yaml.SafeLoader)
-yaml.add_constructor("!envvar", _path_constructor, yaml.SafeLoader)
-
-class Config:
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.load_config()
-
-    def load_config(self):
-        #grab dictionary from config.yaml:
-        with open(self.filepath, 'r') as file:
-            self.config_dict = yaml.safe_load(file)
+load_dotenv()
 
 
-def load_sensor(sensor_config, callback, binary = False):
+def load_sensor(sensor_config, callback, binary = False, default_interval = None):
     if sensor_config["type"] == "command":
-        sensor_polling_rate = sensor_config.get("polling_rate", 1)
-        sensor_command = sensor_config.get("command")
-        sensor_shell = sensor_config.get("shell", "bash")
-        parser_configs = sensor_config.get("parse", [])
-        parsers = []
+        # Resolve polling interval using config model if available, else dict fallback
+        if default_interval is None:
+            default_interval = DEFAULT_BINARY_SENSOR_INTERVAL if binary else DEFAULT_SENSOR_INTERVAL
+        if hasattr(sensor_config, 'get_polling_interval'):
+            polling_interval = sensor_config.get_polling_interval(default_interval)
+            sensor_polling_rate = 1.0 / polling_interval
+            sensor_command = sensor_config.command
+            sensor_shell = sensor_config.shell
+        else:
+            polling_interval = sensor_config.get("polling_interval") or (
+                1.0 / sensor_config["polling_rate"] if sensor_config.get("polling_rate") else default_interval
+            )
+            sensor_polling_rate = 1.0 / polling_interval
+            sensor_command = sensor_config.get("command")
+            sensor_shell = sensor_config.get("shell", "bash")
+        if hasattr(sensor_config, 'get_polling_interval'):
+            parser_configs = [p.model_dump() for p in sensor_config.parse]
+        else:
+            parser_configs = sensor_config.get("parse", [])
+        pipeline = []
         for parser_config in parser_configs:
             if parser_config["type"] == "int":
                 parser = parsers.IntResultParser() 
@@ -89,20 +108,20 @@ def load_sensor(sensor_config, callback, binary = False):
                 map = bidict(parser_config.get("map"))
                 parser = parsers.StateMapResultParser(map) 
 
-            parsers.append(parser)
+            pipeline.append(parser)
         if not binary:
-            return(c_entities.CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
+            return(c_entities.CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=pipeline))
         else:
-            return(c_entities.BinaryCommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=parsers))
+            return(c_entities.BinaryCommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=pipeline))
 
 def shutdown():
     for s in sensors:
         s.stop()
 
 def shutdown_handler(sig, frame):
-    print("Termination Signal received. Shutting down Sensors")
+    logger.info("Termination signal received, shutting down sensors")
     shutdown()
-    print("All Done. Exiting!")
+    logger.info("All done. Exiting!")
     sys.exit(0)
 
 
@@ -173,7 +192,7 @@ def create_select(entity_config, mqtt_settings):
     select_command_template = entity_config.get("command_template")
     select_shell = entity_config.get("shell", "bash")
     if "sensor" in entity_config:
-        sensor = load_sensor(entity_config["sensor"], print)
+        sensor = load_sensor(entity_config["sensor"], lambda v: logger.debug("Select sensor interim value: %s", v), default_interval=DEFAULT_SELECT_FEEDBACK_INTERVAL)
     else:
         sensor = None
     entity = c_entities.Select(select_command_template, select_shell, state_map, sensor)
@@ -188,7 +207,7 @@ def create_select(entity_config, mqtt_settings):
         try:
             ha_entity.select_option(option)
         except RuntimeError as e:
-            print(f"Errror selecting option: {e}")
+            logger.error("Error selecting option: %s", e)
 
     entity.sensor.result_callback = select_option_sanitized
     return entity, ha_entity
@@ -221,7 +240,7 @@ def create_entity(entity_type, entity_config, mqtt_settings):
         entity_command_off = entity_config.get("command_off")
         switch_shell = entity_config.get("shell", "bash")
         if "binary_sensor" in entity_config:
-            sensor = load_sensor(entity_config["binary_sensor"], print, binary = True)
+            sensor = load_sensor(entity_config["binary_sensor"], lambda v: logger.debug("Switch sensor interim value: %s", v), binary = True, default_interval=DEFAULT_SWITCH_FEEDBACK_INTERVAL)
         else:
             sensor = None
         entity = c_entities.Switch(entity_command_on, entity_command_off, shell = switch_shell, sensor = sensor,)
@@ -255,7 +274,12 @@ def load_entities(entity_type, entity_configs, mqtt_settings):
     entities = []
     ha_entities = []
     for entity_config in entity_configs:
-        entity, ha_entity = create_entity(entity_type, entity_config, mqtt_settings)
+        # Convert Pydantic models to dicts for existing entity creation functions
+        if hasattr(entity_config, 'model_dump'):
+            config_dict = entity_config.model_dump(exclude_none=True)
+        else:
+            config_dict = entity_config
+        entity, ha_entity = create_entity(entity_type, config_dict, mqtt_settings)
         entities.append(entity)
         ha_entities.append(ha_entity)
     return entities, ha_entities
@@ -286,6 +310,7 @@ def create_ha_entity(entity_type, entity_info, mqtt):
 
 def load_system_cpu_entities(cpu_config, mqtt_settings, ha_device):
     entities = []
+    cpu_rate = 1.0 / DEFAULT_SYSTEM_CPU_INTERVAL
     if "percent" in cpu_config:
         entity_info_kwargs = {
             "name": "CPU Usage",
@@ -295,11 +320,11 @@ def load_system_cpu_entities(cpu_config, mqtt_settings, ha_device):
             "device": ha_device,
         }
         if cpu_config["percent"].get("total", True):
-            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.cpu_percent, polling_rate=1)
+            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.cpu_percent, polling_rate=cpu_rate)
             entities.append(entity)
         
         if cpu_config["percent"].get("per_cpu", False):
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, partial(psutil.cpu_percent, percpu = True), polling_rate=1)
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, partial(psutil.cpu_percent, percpu = True), polling_rate=cpu_rate)
             entities.append(entity)
     
     if "freq" in cpu_config:
@@ -311,15 +336,16 @@ def load_system_cpu_entities(cpu_config, mqtt_settings, ha_device):
             "device": ha_device,
         }
         if cpu_config["freq"].get("total", False):
-            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.cpu_freq, polling_rate=1)
+            entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.cpu_freq, polling_rate=cpu_rate)
             entities.append(entity)
         if cpu_config["freq"].get("per_cpu", False):
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.cpu_freq, percpu = True), polling_rate=1)
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.cpu_freq, percpu = True), polling_rate=cpu_rate)
             entities.append(entity)
     return entities
 
 def load_system_memory_entities(memory_config, mqtt_settings, ha_device):
     entities = []
+    memory_rate = 1.0 / DEFAULT_SYSTEM_MEMORY_INTERVAL
     
     if "virtual" in memory_config:
         entity_info_kwargs = {
@@ -330,7 +356,7 @@ def load_system_memory_entities(memory_config, mqtt_settings, ha_device):
         }
         units = {key: "MB" for key in ["total", "available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab", "wired"]}
         units["percent"] = "%"
-        entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.virtual_memory, polling_rate=1, units_of_measurement=units)
+        entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.virtual_memory, polling_rate=memory_rate, units_of_measurement=units)
         entities.append(entity)
 
     if "swap" in memory_config:
@@ -342,12 +368,14 @@ def load_system_memory_entities(memory_config, mqtt_settings, ha_device):
         }
         units = {key: "MB" for key in ["total", "used", "free"]}
         units["percent"] = "%"
-        entity = core_entities.PollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.swap_memory, polling_rate=1, units_of_measurement=units)
+        entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.swap_memory, polling_rate=memory_rate, units_of_measurement=units)
         entities.append(entity)
     return entities
 
 def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
     entities = []
+    disk_usage_rate = 1.0 / DEFAULT_SYSTEM_DISK_USAGE_INTERVAL
+    disk_io_rate = 1.0 / DEFAULT_SYSTEM_DISK_IO_INTERVAL
     if "usage" in storage_config:
         disks = psutil.disk_partitions()
         for disk in disks:
@@ -359,7 +387,7 @@ def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
             }
             units = {key: "GB" for key in ["total", "used", "free"]}
             units["percent"] = "%"
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_usage, disk.mountpoint), polling_rate=1/60.0, units_of_measurement=units)
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_usage, disk.mountpoint), polling_rate=disk_usage_rate, units_of_measurement=units)
             entities.append(entity)
     if "io" in storage_config:
         entity_info_kwargs = {
@@ -370,12 +398,12 @@ def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
         }
         if storage_config["io"].get("total", True):
             units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.disk_io_counters, polling_rate=1, units_of_measurement=units)
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil.disk_io_counters, polling_rate=disk_io_rate, units_of_measurement=units)
             entities.append(entity)
             if storage_config["io"].get("rates", False):
                 units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
 
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.disk_io_rates, polling_rate=1, units_of_measurement=units)
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.disk_io_rates, polling_rate=disk_io_rate, units_of_measurement=units)
                 entities.append(entity)
         if storage_config["io"].get("per_disk", True):
             include = storage_config["io"].get("filters", {}).get("include", [])
@@ -388,22 +416,31 @@ def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
             }
             if storage_config["io"].get("counters", False):
                 units = {"read_count": "reads", "write_count": "writes", "read_bytes": "B", "write_bytes": "B", "read_time": "s", "write_time": "s", "busy_time": "s"}
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_counters, perdisk = True, include = include, exclude = exclude), polling_rate=disk_io_rate, units_of_measurement=units)
                 entities.append(entity)
             if storage_config["io"].get("rates", False):
                 units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
-                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
+                entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True, include = include, exclude = exclude), polling_rate=disk_io_rate, units_of_measurement=units)
                 entities.append(entity)
     return entities
 
 
-def load_system_entities(entity_configs, mqtt_settings):
+def load_system_entities(system_config, mqtt_settings):
     entities = []
     ha_entities = []
     device = ha_device
+
+    if system_config is None:
+        return entities, ha_entities
+
+    # Convert Pydantic model to dict for existing entity creation functions
+    if hasattr(system_config, 'model_dump'):
+        entity_configs = system_config.model_dump(exclude_none=True)
+    else:
+        entity_configs = system_config
     
     if "cpu" in entity_configs:
-        entities += load_system_cpu_entities(entity_configs["cpu"], mqtt_settings)
+        entities += load_system_cpu_entities(entity_configs["cpu"], mqtt_settings, device)
 
     if "memory" in entity_configs:
         entities += load_system_memory_entities(entity_configs["memory"], mqtt_settings, device)
@@ -453,7 +490,8 @@ def load_system_entities(entity_configs, mqtt_settings):
                 "device": device,
             }
             units = {}
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.sensors_temperatures, polling_rate=1, units_of_measurement=units)
+            temps_rate = 1.0 / DEFAULT_SYSTEM_TEMPS_INTERVAL
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.sensors_temperatures, polling_rate=temps_rate, units_of_measurement=units)
             entities.append(entity)
 
     if "fans" in entity_configs:
@@ -466,7 +504,8 @@ def load_system_entities(entity_configs, mqtt_settings):
                 "device": device,
             }
             units = {}
-            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.sensors_fans, polling_rate=1, units_of_measurement=units)
+            fans_rate = 1.0 / DEFAULT_SYSTEM_FANS_INTERVAL
+            entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=psutil_bindings.sensors_fans, polling_rate=fans_rate, units_of_measurement=units)
             entities.append(entity)
 
     '''if "process" in entity_configs:
@@ -525,39 +564,37 @@ def load_system_entities(entity_configs, mqtt_settings):
     
 if __name__ == "__main__":
 
+    setup_logging()
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
-    config = Config('config.yaml')
-    mqtt_config = config.config_dict["mqtt"]
+    app_config = load_config('config.yaml')
     mqtt_settings = HASettings.MQTT(
-        host = mqtt_config.get("host", "localhost"), 
-        port = mqtt_config.get("port", 1883), 
-        username = mqtt_config.get("username"), 
-        password = mqtt_config.get("password")
+        host=app_config.mqtt.host,
+        port=app_config.mqtt.port,
+        username=app_config.mqtt.username,
+        password=app_config.mqtt.password,
     )
-    ha_config = config.config_dict["hass"]
-    ha_device = HADeviceInfo(name=ha_config.get("device_name", "Hass Companion"), identifiers=ha_config.get("device_id", "hass-companion"))
+    ha_device = HADeviceInfo(
+        name=app_config.hass.device_name,
+        identifiers=app_config.hass.device_id,
+    )
 
-    device_configs = config.config_dict.get("devices", {})
     ha_devices = {}
-    for device_id, device_config in device_configs.items():
-        ha_additional_device_info = HADeviceInfo(name=device_config.get("name", device_id), identifiers=device_id)
+    for device_id, device_config in app_config.devices.items():
+        ha_additional_device_info = HADeviceInfo(name=device_config.name, identifiers=device_id)
         ha_devices[device_id] = ha_additional_device_info
 
+    sensors, ha_sensors = load_entities("sensor", app_config.entities.sensors, mqtt_settings)
+    binary_sensors, ha_binary_sensors = load_entities("binary_sensor", app_config.entities.binary_sensors, mqtt_settings)
+    switches, ha_switches = load_entities("switch", app_config.entities.switches, mqtt_settings)
+    buttons, ha_buttons = load_entities("button", app_config.entities.buttons, mqtt_settings)
+    selects, ha_selects = load_entities("select", app_config.entities.selects, mqtt_settings)
+    system_entities, ha_system_entities = load_system_entities(app_config.entities.system, mqtt_settings)
 
-    sensors, ha_sensors = load_entities("sensor", config.config_dict["entities"].get("sensors", []), mqtt_settings)
-    binary_sensors, ha_binary_sensors = load_entities("binary_sensor", config.config_dict["entities"].get("binary_sensors", []), mqtt_settings)
-    switches, ha_switches = load_entities("switch", config.config_dict["entities"].get("switches", []), mqtt_settings)
-    buttons, ha_buttons = load_entities("button", config.config_dict["entities"].get("buttons", []), mqtt_settings)
-    selects, ha_selects = load_entities("select", config.config_dict["entities"].get("selects", []), mqtt_settings)
-    system_entities, ha_system_entities = load_system_entities(config.config_dict["entities"].get("system", []), mqtt_settings)
 
-
-    while True:
+    try:
+        signal.pause()
+    except KeyboardInterrupt:
         pass
-    shutdown()
-    
-    
-
-
-        
+    finally:
+        shutdown()
