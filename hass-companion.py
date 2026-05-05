@@ -394,7 +394,7 @@ def load_system_storage_entities(storage_config, mqtt_settings, ha_device):
                 units = {"read_rate": "reads/s", "write_rate": "writes/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"}
                 entity = core_entities.MultiPollingSensor(entity_info_kwargs, mqtt_settings, function=partial(psutil_bindings.disk_io_rates, perdisk = True, include = include, exclude = exclude), polling_rate=1, units_of_measurement=units)
                 entities.append(entity)
-
+    return entities
 
 
 def load_system_entities(entity_configs, mqtt_settings):

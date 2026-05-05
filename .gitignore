@@ -1,5 +1,7 @@
 .env*
 config.yaml
-.venv
+.venv/
 config *.yaml
+__pycache__/
 *.pyc
+.kiro/
