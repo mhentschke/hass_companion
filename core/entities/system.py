@@ -17,9 +17,11 @@ from core.config import (
     DEFAULT_SYSTEM_DISK_USAGE_INTERVAL,
     DEFAULT_SYSTEM_FANS_INTERVAL,
     DEFAULT_SYSTEM_MEMORY_INTERVAL,
+    DEFAULT_SYSTEM_NETWORK_IO_INTERVAL,
     DEFAULT_SYSTEM_TEMPS_INTERVAL,
     SystemConfig,
 )
+from core.rate import RateCalculator
 from core.entities.base import CompositeEntity
 from core.entities.fetcher import SystemFetcher
 from core.entities.sensor import SystemSensor
@@ -327,6 +329,84 @@ def create_system_entities(system_config: SystemConfig | None, mqtt_settings, de
                 icon="mdi:fan",
                 units={},
             ))
+
+    # --- Network IO ---
+    if "network" in config_dict:
+        network = config_dict["network"]
+        if "io" in network:
+            io_config = network["io"]
+            io_interval = io_config.get("polling_interval", DEFAULT_SYSTEM_NETWORK_IO_INTERVAL)
+            include = io_config.get("filters", {}).get("include", [])
+            exclude = io_config.get("filters", {}).get("exclude", [])
+
+            if io_config.get("total", True):
+                entities.append(SystemMultiSensor(
+                    mqtt_settings, device,
+                    name="Network IO",
+                    unique_id="network_io",
+                    fn=psutil_bindings.net_io_counters_total,
+                    interval=io_interval,
+                    icon="mdi:network",
+                    units={
+                        "bytes_sent": "MB", "bytes_recv": "MB",
+                        "packets_sent": "packets", "packets_recv": "packets",
+                        "errin": "errors", "errout": "errors",
+                        "dropin": "drops", "dropout": "drops",
+                    },
+                ))
+
+            if io_config.get("per_nic", False):
+                entities.append(SystemMultiSensor(
+                    mqtt_settings, device,
+                    name="Network IO Per NIC",
+                    unique_id="network_io_per_nic",
+                    fn=partial(
+                        psutil_bindings.net_io_counters_per_nic,
+                        include=include, exclude=exclude,
+                    ),
+                    interval=io_interval,
+                    icon="mdi:network",
+                    units={},
+                ))
+
+            if io_config.get("rates", False):
+                rate_calc = RateCalculator()
+
+                def _net_io_rates_total(rc=rate_calc):
+                    counters = psutil_bindings.net_io_counters_total()
+                    return rc.update(counters)
+
+                entities.append(SystemMultiSensor(
+                    mqtt_settings, device,
+                    name="Network IO Rates",
+                    unique_id="network_io_rates",
+                    fn=_net_io_rates_total,
+                    interval=io_interval,
+                    icon="mdi:network",
+                    units={
+                        "bytes_sent": "MB/s", "bytes_recv": "MB/s",
+                        "packets_sent": "packets/s", "packets_recv": "packets/s",
+                        "errin": "errors/s", "errout": "errors/s",
+                        "dropin": "drops/s", "dropout": "drops/s",
+                    },
+                ))
+
+            if io_config.get("rates_per_nic", False):
+                rate_calc_per_nic = RateCalculator()
+
+                def _net_io_rates_per_nic(rc=rate_calc_per_nic, inc=include, exc=exclude):
+                    counters = psutil_bindings.net_io_counters_per_nic(include=inc, exclude=exc)
+                    return rc.update(counters)
+
+                entities.append(SystemMultiSensor(
+                    mqtt_settings, device,
+                    name="Network IO Rates Per NIC",
+                    unique_id="network_io_rates_per_nic",
+                    fn=_net_io_rates_per_nic,
+                    interval=io_interval,
+                    icon="mdi:network",
+                    units={},
+                ))
 
     logger.info("Created %d system entities", len(entities))
     return entities

@@ -1,5 +1,8 @@
 """Unit tests for psutil helper functions in core.psutil_bindings."""
 
+import re
+import pytest
+
 from core.psutil_bindings import dict_unit_convert, dict_round, flatten_dict, filter_dict
 
 
@@ -97,3 +100,80 @@ class TestFilterDict:
         d = {"a": 1, "b": 2, "c": 3}
         result = filter_dict(d, include=[], exclude=[])
         assert result == d
+
+
+# --- net_io_counters_total ---
+
+class TestNetIOCountersTotal:
+    def test_returns_expected_keys(self):
+        from core.psutil_bindings import net_io_counters_total
+        result = net_io_counters_total()
+        expected_keys = {"bytes_sent", "bytes_recv", "packets_sent", "packets_recv", "errin", "errout", "dropin", "dropout"}
+        assert expected_keys == set(result.keys())
+
+    def test_values_are_numeric(self):
+        from core.psutil_bindings import net_io_counters_total
+        result = net_io_counters_total()
+        for v in result.values():
+            assert isinstance(v, (int, float))
+
+
+# --- net_io_counters_per_nic ---
+
+class TestNetIOCountersPerNic:
+    def test_returns_flattened_keys(self):
+        from core.psutil_bindings import net_io_counters_per_nic
+        result = net_io_counters_per_nic()
+        # Should have nic:metric format keys
+        assert len(result) > 0
+        for key in result.keys():
+            assert ":" in key
+
+    def test_exclude_filters_nics(self):
+        from core.psutil_bindings import net_io_counters_per_nic
+        import psutil
+        # Get all NIC names
+        all_nics = list(psutil.net_io_counters(pernic=True).keys())
+        if len(all_nics) < 2:
+            pytest.skip("Need at least 2 NICs to test filtering")
+        # Exclude the first NIC
+        target = all_nics[0]
+        result = net_io_counters_per_nic(exclude=[f"^{re.escape(target)}$"])
+        # No keys should start with the excluded NIC
+        for key in result.keys():
+            assert not key.startswith(f"{target}:")
+
+    def test_include_filters_nics(self):
+        from core.psutil_bindings import net_io_counters_per_nic
+        import psutil
+        all_nics = list(psutil.net_io_counters(pernic=True).keys())
+        if len(all_nics) < 2:
+            pytest.skip("Need at least 2 NICs to test filtering")
+        # Include only the first NIC
+        target = all_nics[0]
+        result = net_io_counters_per_nic(include=[f"^{re.escape(target)}$"])
+        # All keys should start with the included NIC
+        for key in result.keys():
+            assert key.startswith(f"{target}:")
+
+
+# --- Network IO rate calculation with RateCalculator ---
+
+class TestNetIORateCalculation:
+    def test_rate_calculator_with_net_io_counters(self):
+        from core.rate import RateCalculator
+        rc = RateCalculator()
+        counters1 = {"bytes_sent": 100.0, "bytes_recv": 200.0, "packets_sent": 10.0, "packets_recv": 20.0}
+        # First call returns zeros
+        result = rc.update(counters1)
+        assert all(v == 0.0 for v in result.values())
+
+        # Second call should produce rates > 0 (time has elapsed)
+        import time
+        time.sleep(0.05)
+        counters2 = {"bytes_sent": 200.0, "bytes_recv": 400.0, "packets_sent": 20.0, "packets_recv": 40.0}
+        result = rc.update(counters2)
+        assert result["bytes_sent"] > 0
+        assert result["bytes_recv"] > 0
+        assert result["packets_sent"] > 0
+        assert result["packets_recv"] > 0

@@ -178,35 +178,40 @@ def disk_io_rates(perdisk = False, include = None, exclude = None):
 
     return flatten_dict(dict_round(disk_rates, precision=2))
 
-def net_io_counters():
-    """Parse network IO counters."""
+def net_io_counters_total() -> dict[str, float]:
+    """Return aggregate network IO counters (bytes in MB, rest raw).
+
+    Keys: bytes_sent, bytes_recv, packets_sent, packets_recv, errin, errout, dropin, dropout
+    """
     net_info = psutil.net_io_counters()._asdict()
     conversion_keys = ["bytes_sent", "bytes_recv"]
-    conversion_factor = 1/(1024 ** 2)  # Convert bytes to MB
+    conversion_factor = 1 / (1024 ** 2)  # Convert bytes to MB
     net_info = dict_unit_convert(net_info, conversion_factor, conversion_keys)
     return net_info
-    
-net_io_last_counters = net_io_counters()
-net_io_last_time = time.time()
 
-def net_io_rates():
-    net_info = net_io_counters()
-    key_map = {
-        "bytes_sent": "bytes_sent_rate",
-        "bytes_recv": "bytes_recv_rate",
-        "packets_sent": "packets_sent_rate",
-        "packets_recv": "packets_recv_rate",
-        "errin": "errin_rate",
-        "errout": "errout_rate",
-        "dropin": "dropin_rate",
-        "dropout": "dropout_rate",
-    }
-    # calculate rates
-    net_rates = {}
-    for key in ["bytes_sent", "bytes_recv", "packets_sent", "packets_recv", "errin", "errout", "dropin", "dropout"]:
-        if key in net_info:
-            net_rates[key_map[key]] = (net_info[key] - net_io_last_counters[key]) / (time.time() - net_io_last_time)
-    return net_rates
+
+def net_io_counters_per_nic(include: list[str] | None = None, exclude: list[str] | None = None) -> dict[str, float]:
+    """Return per-NIC network IO counters, flattened with 'nic:metric' keys.
+
+    Applies include/exclude regex filtering to NIC names via filter_dict().
+    Keys per NIC: bytes_sent, bytes_recv, packets_sent, packets_recv, errin, errout, dropin, dropout
+    """
+    raw = psutil.net_io_counters(pernic=True)
+    # Convert named tuples to dicts
+    per_nic: dict[str, dict[str, float]] = {}
+    for nic_name, counters in raw.items():
+        per_nic[nic_name] = counters._asdict()
+
+    # Apply NIC filtering
+    per_nic = filter_dict(per_nic, include=include or [], exclude=exclude or [])
+
+    # Convert bytes to MB for each NIC
+    conversion_keys = ["bytes_sent", "bytes_recv"]
+    conversion_factor = 1 / (1024 ** 2)
+    for nic_name in per_nic:
+        per_nic[nic_name] = dict_unit_convert(per_nic[nic_name], conversion_factor, conversion_keys)
+
+    return flatten_dict(per_nic)
 
 def sensors_temperatures():
     """Parse sensor temperatures."""
