@@ -1,8 +1,6 @@
 """Unified entity package.
 
-New entity classes live in submodules (base, fetcher, sensor, etc.).
-Legacy classes are re-exported from _legacy for backward compatibility
-until the old code is removed in task 11.
+Each entity type is a single class owning both internal logic and HA representation.
 """
 
 from core.entities.base import BaseEntity
@@ -13,14 +11,6 @@ from core.entities.interactive import InteractiveEntity
 from core.entities.select import Select
 from core.entities.sensor import CommandSensor, Sensor
 from core.entities.switch import Switch
-
-# Re-export legacy classes so `import core.entities as core_entities` still works
-from core.entities._legacy import (  # noqa: F401
-    Button as LegacyButton,
-    Entity,
-    MultiPollingSensor,
-    PollingSensor,
-)
 
 __all__ = [
     "BaseEntity",
@@ -34,9 +24,4 @@ __all__ = [
     "Sensor",
     "StateFetcher",
     "Switch",
-    # Legacy
-    "LegacyButton",
-    "Entity",
-    "MultiPollingSensor",
-    "PollingSensor",
 ]
