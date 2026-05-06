@@ -27,6 +27,10 @@ DEFAULT_SYSTEM_DISK_USAGE_INTERVAL = 60.0
 DEFAULT_SYSTEM_DISK_IO_INTERVAL = 5.0
 DEFAULT_SYSTEM_TEMPS_INTERVAL = 10.0
 DEFAULT_SYSTEM_FANS_INTERVAL = 10.0
+DEFAULT_SYSTEM_NETWORK_IO_INTERVAL = 5.0
+DEFAULT_SYSTEM_PING_INTERVAL = 30.0
+DEFAULT_SYSTEM_DNS_INTERVAL = 60.0
+DEFAULT_SYSTEM_PROCESS_INTERVAL = 10.0
 
 
 # --- MQTT & Hass ---
@@ -183,11 +187,83 @@ class SystemSensorsConfig(BaseModel):
     fans: Optional[dict] = None
 
 
+class NetworkIOFilters(BaseModel):
+    include: list[str] = []
+    exclude: list[str] = []
+
+
+class NetworkIOConfig(BaseModel):
+    total: bool = True
+    per_nic: bool = False
+    rates: bool = False
+    rates_per_nic: bool = False
+    polling_interval: float = DEFAULT_SYSTEM_NETWORK_IO_INTERVAL
+    filters: NetworkIOFilters = NetworkIOFilters()
+
+    @field_validator("polling_interval")
+    @classmethod
+    def validate_interval(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("polling_interval must be greater than 0")
+        return v
+
+
+class PingHostConfig(BaseModel):
+    host: str
+    id: Optional[str] = None
+    interface: Optional[str] = None
+    timeout: float = 5.0
+    size: Optional[int] = None
+    polling_interval: float = DEFAULT_SYSTEM_PING_INTERVAL
+
+    @field_validator("polling_interval")
+    @classmethod
+    def validate_interval(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("polling_interval must be greater than 0")
+        return v
+
+
+class DNSHostConfig(BaseModel):
+    host: str
+    id: Optional[str] = None
+    polling_interval: float = DEFAULT_SYSTEM_DNS_INTERVAL
+
+    @field_validator("polling_interval")
+    @classmethod
+    def validate_interval(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("polling_interval must be greater than 0")
+        return v
+
+
+class NetworkConfig(BaseModel):
+    io: Optional[NetworkIOConfig] = None
+    ping: list[PingHostConfig] = []
+    dns: list[DNSHostConfig] = []
+
+
+class ProcessConfig(BaseModel):
+    name: str
+    id: Optional[str] = None
+    pattern: str
+    polling_interval: float = DEFAULT_SYSTEM_PROCESS_INTERVAL
+
+    @field_validator("polling_interval")
+    @classmethod
+    def validate_interval(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("polling_interval must be greater than 0")
+        return v
+
+
 class SystemConfig(BaseModel):
     cpu: Optional[SystemCpuConfig] = None
     memory: Optional[SystemMemoryConfig] = None
     storage: Optional[SystemStorageConfig] = None
     sensors: Optional[SystemSensorsConfig] = None
+    network: Optional[NetworkConfig] = None
+    processes: list[ProcessConfig] = []
 
 
 # --- Top-level config ---

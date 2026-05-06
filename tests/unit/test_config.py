@@ -111,3 +111,171 @@ class TestPollingRateConversion:
         """Falls back to the provided default when neither field is set."""
         sensor = SensorConfig(name="Test")
         assert sensor.get_polling_interval(default=30.0) == 30.0
+
+
+# --- Network and Process config models ---
+
+from core.config import (
+    DNSHostConfig,
+    NetworkConfig,
+    NetworkIOConfig,
+    NetworkIOFilters,
+    PingHostConfig,
+    ProcessConfig,
+)
+
+
+class TestNetworkConfig:
+    def test_valid_network_io_config(self):
+        """NetworkIOConfig with all options parses correctly."""
+        config = NetworkIOConfig(
+            total=True,
+            per_nic=True,
+            rates=True,
+            rates_per_nic=True,
+            polling_interval=10.0,
+            filters=NetworkIOFilters(include=["^eth"], exclude=["^lo$"]),
+        )
+        assert config.total is True
+        assert config.per_nic is True
+        assert config.rates is True
+        assert config.polling_interval == 10.0
+        assert config.filters.include == ["^eth"]
+        assert config.filters.exclude == ["^lo$"]
+
+    def test_network_io_defaults(self):
+        """NetworkIOConfig uses sensible defaults."""
+        config = NetworkIOConfig()
+        assert config.total is True
+        assert config.per_nic is False
+        assert config.rates is False
+        assert config.polling_interval == 5.0
+
+    def test_network_io_invalid_polling_interval(self):
+        """NetworkIOConfig rejects polling_interval <= 0."""
+        with pytest.raises(ValidationError):
+            NetworkIOConfig(polling_interval=0)
+        with pytest.raises(ValidationError):
+            NetworkIOConfig(polling_interval=-1)
+
+    def test_valid_full_network_config(self):
+        """NetworkConfig with io, ping, and dns sections parses correctly."""
+        config = NetworkConfig(
+            io=NetworkIOConfig(total=True, rates=True),
+            ping=[PingHostConfig(host="8.8.8.8", id="google")],
+            dns=[DNSHostConfig(host="google.com", id="google_dns")],
+        )
+        assert config.io.total is True
+        assert len(config.ping) == 1
+        assert config.ping[0].host == "8.8.8.8"
+        assert len(config.dns) == 1
+        assert config.dns[0].host == "google.com"
+
+
+class TestPingHostConfig:
+    def test_valid_ping_config(self):
+        """PingHostConfig with all options parses correctly."""
+        config = PingHostConfig(
+            host="1.1.1.1",
+            id="cloudflare",
+            interface="eth0",
+            timeout=3.0,
+            size=64,
+            polling_interval=15.0,
+        )
+        assert config.host == "1.1.1.1"
+        assert config.id == "cloudflare"
+        assert config.interface == "eth0"
+        assert config.timeout == 3.0
+        assert config.size == 64
+        assert config.polling_interval == 15.0
+
+    def test_ping_requires_host(self):
+        """PingHostConfig requires the host field."""
+        with pytest.raises(ValidationError) as exc_info:
+            PingHostConfig()
+        errors = exc_info.value.errors()
+        field_names = [e["loc"][-1] for e in errors]
+        assert "host" in field_names
+
+    def test_ping_invalid_polling_interval(self):
+        """PingHostConfig rejects polling_interval <= 0."""
+        with pytest.raises(ValidationError):
+            PingHostConfig(host="8.8.8.8", polling_interval=0)
+        with pytest.raises(ValidationError):
+            PingHostConfig(host="8.8.8.8", polling_interval=-5)
+
+    def test_ping_defaults(self):
+        """PingHostConfig uses correct defaults."""
+        config = PingHostConfig(host="8.8.8.8")
+        assert config.timeout == 5.0
+        assert config.polling_interval == 30.0
+        assert config.interface is None
+        assert config.size is None
+
+
+class TestDNSHostConfig:
+    def test_valid_dns_config(self):
+        """DNSHostConfig parses correctly."""
+        config = DNSHostConfig(host="example.com", id="example", polling_interval=120.0)
+        assert config.host == "example.com"
+        assert config.id == "example"
+        assert config.polling_interval == 120.0
+
+    def test_dns_requires_host(self):
+        """DNSHostConfig requires the host field."""
+        with pytest.raises(ValidationError) as exc_info:
+            DNSHostConfig()
+        errors = exc_info.value.errors()
+        field_names = [e["loc"][-1] for e in errors]
+        assert "host" in field_names
+
+    def test_dns_invalid_polling_interval(self):
+        """DNSHostConfig rejects polling_interval <= 0."""
+        with pytest.raises(ValidationError):
+            DNSHostConfig(host="example.com", polling_interval=0)
+        with pytest.raises(ValidationError):
+            DNSHostConfig(host="example.com", polling_interval=-1)
+
+    def test_dns_defaults(self):
+        """DNSHostConfig uses correct defaults."""
+        config = DNSHostConfig(host="example.com")
+        assert config.polling_interval == 60.0
+        assert config.id is None
+
+
+class TestProcessConfig:
+    def test_valid_process_config(self):
+        """ProcessConfig parses correctly."""
+        config = ProcessConfig(
+            name="Firefox",
+            id="firefox",
+            pattern="firefox",
+            polling_interval=15.0,
+        )
+        assert config.name == "Firefox"
+        assert config.id == "firefox"
+        assert config.pattern == "firefox"
+        assert config.polling_interval == 15.0
+
+    def test_process_requires_name_and_pattern(self):
+        """ProcessConfig requires name and pattern fields."""
+        with pytest.raises(ValidationError) as exc_info:
+            ProcessConfig()
+        errors = exc_info.value.errors()
+        field_names = [e["loc"][-1] for e in errors]
+        assert "name" in field_names
+        assert "pattern" in field_names
+
+    def test_process_invalid_polling_interval(self):
+        """ProcessConfig rejects polling_interval <= 0."""
+        with pytest.raises(ValidationError):
+            ProcessConfig(name="Test", pattern="test", polling_interval=0)
+        with pytest.raises(ValidationError):
+            ProcessConfig(name="Test", pattern="test", polling_interval=-1)
+
+    def test_process_defaults(self):
+        """ProcessConfig uses correct defaults."""
+        config = ProcessConfig(name="Docker", pattern="dockerd")
+        assert config.polling_interval == 10.0
+        assert config.id is None
