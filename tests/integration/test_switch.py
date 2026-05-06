@@ -1,7 +1,6 @@
 """Integration tests for Switch entity with async command execution and mocked HA entity."""
 
 import asyncio
-import time
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
@@ -85,8 +84,9 @@ async def test_switch_optimistic_state_off(mock_run_command):
         switch.stop()
 
 
-@patch("core.entities.fetcher.run_command")
-def test_switch_feedback_sensor_routes_state(mock_run_command):
+@pytest.mark.asyncio
+@patch("core.entities.fetcher.run_command", new_callable=AsyncMock)
+async def test_switch_feedback_sensor_routes_state(mock_run_command):
     """Verify feedback sensor updates switch state instead of optimistic update."""
     mock_run_command.return_value = "1"
     switch, mock_ha = _make_switch(
@@ -97,18 +97,18 @@ def test_switch_feedback_sensor_routes_state(mock_run_command):
         },
     )
     try:
-        # Start the feedback fetcher via compat bridge
-        switch.start()
+        task = asyncio.create_task(switch.run())
         # Wait for feedback fetcher to poll
-        time.sleep(0.3)
+        await asyncio.sleep(0.3)
         # Feedback sensor should have called _update_state via _on_feedback
         mock_ha.on.assert_called()
     finally:
         switch.stop()
+        await task
 
 
 @pytest.mark.asyncio
-@patch("core.entities.fetcher.run_command")
+@patch("core.entities.fetcher.run_command", new_callable=AsyncMock)
 @patch("core.entities.switch.run_command", new_callable=AsyncMock)
 async def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_fetcher_run):
     """Verify switch does NOT update state optimistically when feedback sensor exists."""

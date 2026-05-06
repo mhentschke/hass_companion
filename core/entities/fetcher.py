@@ -7,7 +7,6 @@ availability tracking, and invokes a callback with parsed values.
 
 import asyncio
 import logging
-import threading
 from typing import Any, Callable
 
 from core.parsers import build_pipeline
@@ -20,9 +19,7 @@ class StateFetcher:
     """Polls a value source at a configurable interval, applies parsers, invokes callback.
 
     Subclasses implement _fetch_value() to provide the raw value.
-    The poll loop runs as an async coroutine. For backward compatibility with
-    synchronous callers, start() launches the coroutine in a background thread
-    with its own event loop.
+    The poll loop runs as an async coroutine via run().
     """
 
     def __init__(
@@ -47,9 +44,6 @@ class StateFetcher:
         self._failure_count = 0
         self._failure_threshold = 3
         self._available = True
-        # Thread-based bridge for synchronous callers (removed in Phase 3.3)
-        self._thread: threading.Thread | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def _fetch_value(self) -> Any:
         """Subclasses implement value retrieval. Returns raw value."""
@@ -64,32 +58,9 @@ class StateFetcher:
             except asyncio.TimeoutError:
                 pass  # Normal — timeout means "time to poll again"
 
-    def start(self) -> None:
-        """Start the poll loop in a background thread (backward compat bridge).
-
-        Creates a new event loop in a daemon thread and runs the async poll loop.
-        This will be removed when entity classes gain their own async run().
-        """
-        self._thread = threading.Thread(target=self._run_in_thread, daemon=True)
-        self._thread.start()
-
-    def _run_in_thread(self) -> None:
-        """Thread target: create event loop and run the async poll loop."""
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        try:
-            self._loop.run_until_complete(self.run())
-        finally:
-            self._loop.close()
-
     def stop(self) -> None:
-        """Signal the poll loop to exit (thread-safe)."""
-        if self._loop and self._loop.is_running():
-            # Running in background thread — schedule set on that loop
-            self._loop.call_soon_threadsafe(self._exit.set)
-        else:
-            # Running in caller's event loop or not yet started
-            self._exit.set()
+        """Signal the poll loop to exit."""
+        self._exit.set()
 
     async def _execute_poll(self) -> None:
         """Fetch value, apply parsers, invoke callback."""

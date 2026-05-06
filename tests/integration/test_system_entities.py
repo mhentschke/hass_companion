@@ -1,6 +1,8 @@
 """Integration tests for SystemFetcher and SystemMultiSensor."""
 
-import time
+import asyncio
+
+import pytest
 from unittest.mock import Mock
 
 from core.entities.fetcher import SystemFetcher
@@ -10,7 +12,8 @@ from core.entities.system import SystemMultiSensor
 class TestSystemFetcher:
     """Tests for SystemFetcher with mock callables."""
 
-    def test_callback_receives_raw_result(self):
+    @pytest.mark.asyncio
+    async def test_callback_receives_raw_result(self):
         """SystemFetcher invokes callback with the callable's raw return value."""
         callback = Mock()
         fetcher = SystemFetcher(
@@ -18,13 +21,15 @@ class TestSystemFetcher:
             fn=lambda: 42,
             interval=0.1,
         )
-        fetcher.start()
-        time.sleep(0.25)
+        task = asyncio.create_task(fetcher.run())
+        await asyncio.sleep(0.25)
         fetcher.stop()
+        await task
 
         callback.assert_called_with(42)
 
-    def test_dict_result_passed_through(self):
+    @pytest.mark.asyncio
+    async def test_dict_result_passed_through(self):
         """SystemFetcher passes dict results directly to callback."""
         callback = Mock()
         fetcher = SystemFetcher(
@@ -32,13 +37,15 @@ class TestSystemFetcher:
             fn=lambda: {"cpu": 55.0, "mem": 1024},
             interval=0.1,
         )
-        fetcher.start()
-        time.sleep(0.25)
+        task = asyncio.create_task(fetcher.run())
+        await asyncio.sleep(0.25)
         fetcher.stop()
+        await task
 
         callback.assert_called_with({"cpu": 55.0, "mem": 1024})
 
-    def test_exception_handling_continues_polling(self):
+    @pytest.mark.asyncio
+    async def test_exception_handling_continues_polling(self):
         """SystemFetcher continues polling after callable raises."""
         call_count = {"n": 0}
 
@@ -54,9 +61,10 @@ class TestSystemFetcher:
             fn=flaky_fn,
             interval=0.1,
         )
-        fetcher.start()
-        time.sleep(0.35)
+        task = asyncio.create_task(fetcher.run())
+        await asyncio.sleep(0.35)
         fetcher.stop()
+        await task
 
         # Should have recovered and called back with "recovered"
         callback.assert_called_with("recovered")
@@ -65,7 +73,8 @@ class TestSystemFetcher:
 class TestSystemMultiSensor:
     """Tests for SystemMultiSensor with mock callables and HA entities."""
 
-    def test_dict_result_distributes_to_ha_entities(self):
+    @pytest.mark.asyncio
+    async def test_dict_result_distributes_to_ha_entities(self):
         """Each key in a dict result routes to its corresponding mock HA entity."""
         mock_temp = Mock()
         mock_humidity = Mock()
@@ -79,15 +88,16 @@ class TestSystemMultiSensor:
             interval=0.1,
             _ha_entities=mock_entities,
         )
-        # Manually start the fetcher (run() is now async, start() is the compat bridge)
-        sensor._fetcher.start()
-        time.sleep(0.25)
+        task = asyncio.create_task(sensor.run())
+        await asyncio.sleep(0.25)
         sensor.stop()
+        await task
 
         mock_temp.set_state.assert_called_with(42.0)
         mock_humidity.set_state.assert_called_with(65)
 
-    def test_list_result_distributes_to_ha_entities(self):
+    @pytest.mark.asyncio
+    async def test_list_result_distributes_to_ha_entities(self):
         """Each index in a list result routes to its corresponding mock HA entity."""
         mock_0 = Mock()
         mock_1 = Mock()
@@ -102,10 +112,10 @@ class TestSystemMultiSensor:
             interval=0.1,
             _ha_entities=mock_entities,
         )
-        # Manually start the fetcher (run() is now async, start() is the compat bridge)
-        sensor._fetcher.start()
-        time.sleep(0.25)
+        task = asyncio.create_task(sensor.run())
+        await asyncio.sleep(0.25)
         sensor.stop()
+        await task
 
         mock_0.set_state.assert_called_with(10.0)
         mock_1.set_state.assert_called_with(20.0)

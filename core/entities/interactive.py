@@ -40,11 +40,6 @@ class InteractiveEntity(Entity):
         """Subclasses create a feedback fetcher if config specifies one."""
         pass
 
-    def start(self) -> None:
-        """Start feedback fetcher in background thread (backward compat bridge)."""
-        if self._feedback_fetcher:
-            self._feedback_fetcher.start()
-
     async def run(self) -> None:
         """Concurrently handle commands and poll feedback."""
         self._loop = asyncio.get_running_loop()

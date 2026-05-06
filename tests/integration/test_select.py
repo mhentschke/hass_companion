@@ -1,7 +1,6 @@
 """Integration tests for Select entity with async command execution and mocked HA entity."""
 
 import asyncio
-import time
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
@@ -59,8 +58,9 @@ async def test_select_optimistic_state_update(mock_run_command):
         select.stop()
 
 
-@patch("core.entities.fetcher.run_command")
-def test_select_feedback_sensor_inverse_mapping(mock_run_command):
+@pytest.mark.asyncio
+@patch("core.entities.fetcher.run_command", new_callable=AsyncMock)
+async def test_select_feedback_sensor_inverse_mapping(mock_run_command):
     """Verify feedback sensor applies inverse state map before updating state."""
     mock_run_command.return_value = "med"
     select, mock_ha = _make_select(
@@ -71,17 +71,17 @@ def test_select_feedback_sensor_inverse_mapping(mock_run_command):
         },
     )
     try:
-        # Start the feedback fetcher via compat bridge
-        select.start()
-        time.sleep(0.3)
+        task = asyncio.create_task(select.run())
+        await asyncio.sleep(0.3)
         # Feedback value "med" should be inverse-mapped to "Medium"
         mock_ha.set_current_option.assert_called_with("Medium")
     finally:
         select.stop()
+        await task
 
 
 @pytest.mark.asyncio
-@patch("core.entities.fetcher.run_command")
+@patch("core.entities.fetcher.run_command", new_callable=AsyncMock)
 @patch("core.entities.select.run_command", new_callable=AsyncMock)
 async def test_select_no_optimistic_update_with_feedback(mock_select_run, mock_fetcher_run):
     """Verify select does NOT update state optimistically when feedback sensor exists."""

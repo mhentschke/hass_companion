@@ -22,12 +22,8 @@ class BaseEntity:
         self._mqtt_settings = mqtt_settings
         self._device = device
 
-    def start(self) -> None:
-        """Start polling/processing. Backward compat bridge until async entry point."""
-        pass
-
     def stop(self) -> None:
-        """Clean shutdown. Subclasses should override to stop threads/tasks."""
+        """Clean shutdown. Subclasses should override to stop tasks."""
         pass
 
     def republish(self) -> None:
@@ -105,11 +101,6 @@ class CompositeEntity(BaseEntity):
         to discover the shape and create HA entities accordingly.
         """
         raise NotImplementedError
-
-    def start(self) -> None:
-        """Start the fetcher in a background thread (backward compat bridge)."""
-        if self._fetcher:
-            self._fetcher.start()
 
     async def run(self) -> None:
         """Run the fetcher's async poll loop."""
