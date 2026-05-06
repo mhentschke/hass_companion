@@ -1,16 +1,17 @@
-"""StateFetcher — standalone polling component with parser pipeline.
+"""StateFetcher — standalone async polling component with parser pipeline.
 
 Not an HA entity itself. Used by Sensor (as its core) and InteractiveEntity
-(for state feedback). Owns the polling thread, parser pipeline, availability
-tracking, and invokes a callback with parsed values.
+(for state feedback). Owns the poll loop as an async coroutine, parser pipeline,
+availability tracking, and invokes a callback with parsed values.
 """
 
+import asyncio
 import logging
-import subprocess
 import threading
 from typing import Any, Callable
 
 from core.parsers import build_pipeline
+from core.subprocess import run_command
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,9 @@ class StateFetcher:
     """Polls a value source at a configurable interval, applies parsers, invokes callback.
 
     Subclasses implement _fetch_value() to provide the raw value.
+    The poll loop runs as an async coroutine. For backward compatibility with
+    synchronous callers, start() launches the coroutine in a background thread
+    with its own event loop.
     """
 
     def __init__(
@@ -39,35 +43,58 @@ class StateFetcher:
         else:
             self._interval = config.get_polling_interval(10.0)
         self._pipeline = build_pipeline(parser_configs or [])
-        self._exit = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._exit = asyncio.Event()
         self._failure_count = 0
         self._failure_threshold = 3
         self._available = True
+        # Thread-based bridge for synchronous callers (removed in Phase 3.3)
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    def _fetch_value(self) -> str:
-        """Subclasses implement value retrieval. Returns raw string."""
+    async def _fetch_value(self) -> Any:
+        """Subclasses implement value retrieval. Returns raw value."""
         raise NotImplementedError
 
+    async def run(self) -> None:
+        """Async poll loop — the primary interface for async callers."""
+        while not self._exit.is_set():
+            await self._execute_poll()
+            try:
+                await asyncio.wait_for(self._exit.wait(), timeout=self._interval)
+            except asyncio.TimeoutError:
+                pass  # Normal — timeout means "time to poll again"
+
     def start(self) -> None:
-        """Start the polling thread."""
-        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        """Start the poll loop in a background thread (backward compat bridge).
+
+        Creates a new event loop in a daemon thread and runs the async poll loop.
+        This will be removed when entity classes gain their own async run().
+        """
+        self._thread = threading.Thread(target=self._run_in_thread, daemon=True)
         self._thread.start()
 
+    def _run_in_thread(self) -> None:
+        """Thread target: create event loop and run the async poll loop."""
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        try:
+            self._loop.run_until_complete(self.run())
+        finally:
+            self._loop.close()
+
     def stop(self) -> None:
-        """Signal the polling thread to exit."""
-        self._exit.set()
+        """Signal the poll loop to exit (thread-safe)."""
+        if self._loop and self._loop.is_running():
+            # Running in background thread — schedule set on that loop
+            self._loop.call_soon_threadsafe(self._exit.set)
+        else:
+            # Running in caller's event loop or not yet started
+            self._exit.set()
 
-    def _poll_loop(self) -> None:
-        """Polling loop running in a daemon thread."""
-        while not self._exit.is_set():
-            self._execute_poll()
-            self._exit.wait(timeout=self._interval)
-
-    def _execute_poll(self) -> None:
+    async def _execute_poll(self) -> None:
         """Fetch value, apply parsers, invoke callback."""
         try:
-            raw = self._fetch_value()
+            raw = await self._fetch_value()
             output: Any = raw
             for parser in self._pipeline:
                 output = parser.parse(output)
@@ -104,7 +131,7 @@ class StateFetcher:
 
 
 class CommandFetcher(StateFetcher):
-    """Fetches value by executing a shell command via subprocess."""
+    """Fetches value by executing a shell command via async subprocess."""
 
     def __init__(
         self,
@@ -119,31 +146,17 @@ class CommandFetcher(StateFetcher):
         self._timeout = config.command_timeout
         self._shell = getattr(config, "shell", "bash")
 
-    def _fetch_value(self) -> str:
-        """Execute shell command and return stdout."""
-        try:
-            result = subprocess.run(
-                ["/bin/bash", "--noprofile", "--norc", "-c", self._command],
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
-            )
-            return result.stdout.rstrip("\n")
-        except subprocess.TimeoutExpired:
-            logger.warning("Command timed out: %s", self._command)
-            raise
-        except Exception as e:
-            logger.error("Command failed: %s — %s", self._command, e)
-            raise
+    async def _fetch_value(self) -> str:
+        """Execute shell command asynchronously and return stdout."""
+        return await run_command(self._command, self._shell, self._timeout)
 
 
 class SystemFetcher(StateFetcher):
-    """Fetches value by calling a Python callable (e.g., psutil function).
+    """Fetches value by calling a Python callable via asyncio.to_thread().
 
     Unlike CommandFetcher which runs a subprocess, SystemFetcher invokes
-    a Python function directly. The function can return any type (scalar,
-    dict, list) — the parser pipeline is skipped since system callables
-    already return typed data.
+    a Python function in a thread pool to avoid blocking the event loop.
+    The parser pipeline is skipped since system callables already return typed data.
     """
 
     def __init__(
@@ -164,14 +177,14 @@ class SystemFetcher(StateFetcher):
         )
         self._fn = fn
 
-    def _fetch_value(self) -> Any:
-        """Call the Python function and return its raw result."""
-        return self._fn()
+    async def _fetch_value(self) -> Any:
+        """Call the Python function in a thread pool and return its raw result."""
+        return await asyncio.to_thread(self._fn)
 
-    def _execute_poll(self) -> None:
+    async def _execute_poll(self) -> None:
         """Fetch value and invoke callback directly (no parser pipeline)."""
         try:
-            result = self._fetch_value()
+            result = await self._fetch_value()
             self._callback(result)
             self._record_success()
         except Exception as e:

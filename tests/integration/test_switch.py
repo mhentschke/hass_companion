@@ -1,7 +1,7 @@
 """Integration tests for Switch entity with mocked subprocess and HA entity."""
 
 import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from core.config import BinarySensorConfig, SwitchConfig
 from core.entities.switch import Switch
@@ -84,10 +84,10 @@ def test_switch_optimistic_state_off(mock_run):
         switch.stop()
 
 
-@patch("core.entities.fetcher.subprocess.run")
-def test_switch_feedback_sensor_routes_state(mock_run):
+@patch("core.entities.fetcher.run_command")
+def test_switch_feedback_sensor_routes_state(mock_run_command):
     """Verify feedback sensor updates switch state instead of optimistic update."""
-    mock_run.return_value = Mock(stdout="1\n")
+    mock_run_command.return_value = "1"
     switch, mock_ha = _make_switch(
         binary_sensor={
             "command": "echo 1",
@@ -104,11 +104,11 @@ def test_switch_feedback_sensor_routes_state(mock_run):
         switch.stop()
 
 
-@patch("core.entities.fetcher.subprocess.run")
+@patch("core.entities.fetcher.run_command")
 @patch("core.entities.switch.subprocess.run")
-def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_fetcher_run):
+def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_run_command):
     """Verify switch does NOT update state optimistically when feedback sensor exists."""
-    mock_fetcher_run.return_value = Mock(stdout="0\n")
+    mock_run_command.return_value = "0"
     switch, mock_ha = _make_switch(
         binary_sensor={
             "command": "echo 0",

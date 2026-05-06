@@ -57,10 +57,10 @@ def test_select_optimistic_state_update(mock_run):
         select.stop()
 
 
-@patch("core.entities.fetcher.subprocess.run")
-def test_select_feedback_sensor_inverse_mapping(mock_run):
+@patch("core.entities.fetcher.run_command")
+def test_select_feedback_sensor_inverse_mapping(mock_run_command):
     """Verify feedback sensor applies inverse state map before updating state."""
-    mock_run.return_value = Mock(stdout="med\n")
+    mock_run_command.return_value = "med"
     select, mock_ha = _make_select(
         sensor={
             "command": "get-mode",
@@ -76,11 +76,11 @@ def test_select_feedback_sensor_inverse_mapping(mock_run):
         select.stop()
 
 
-@patch("core.entities.fetcher.subprocess.run")
+@patch("core.entities.fetcher.run_command")
 @patch("core.entities.select.subprocess.run")
-def test_select_no_optimistic_update_with_feedback(mock_select_run, mock_fetcher_run):
+def test_select_no_optimistic_update_with_feedback(mock_select_run, mock_run_command):
     """Verify select does NOT update state optimistically when feedback sensor exists."""
-    mock_fetcher_run.return_value = Mock(stdout="low\n")
+    mock_run_command.return_value = "low"
     select, mock_ha = _make_select(
         sensor={
             "command": "get-mode",
