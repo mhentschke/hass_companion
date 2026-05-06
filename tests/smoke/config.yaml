@@ -1,0 +1,89 @@
+mqtt:
+  host: localhost
+  port: ${TEST_MQTT_PORT:1883}
+
+hass:
+  device_name: Smoke Test Device
+  device_id: smoke_test_device
+
+entities:
+  sensors:
+    # Command sensor with parser pipeline (regex + int)
+    - name: Echo Sensor
+      id: echo_sensor
+      type: command
+      command: "echo 'value=42'"
+      polling_interval: 1
+      parse:
+        - type: regex
+          regex: "value=(\\d+)"
+          group: 1
+        - type: int
+
+  binary_sensors:
+    # Binary sensor with bool parser
+    - name: Echo Binary
+      id: echo_binary
+      type: command
+      command: "echo true"
+      polling_interval: 1
+      parse:
+        - type: bool
+
+  switches:
+    # Switch with command_on/command_off and binary_sensor feedback
+    - name: File Switch
+      id: file_switch
+      command_on: "echo ON > /tmp/hass_smoke_switch"
+      command_off: "echo OFF > /tmp/hass_smoke_switch"
+      binary_sensor:
+        type: command
+        command: "cat /tmp/hass_smoke_switch 2>/dev/null | grep -q ON && echo true || echo false"
+        polling_interval: 1
+        parse:
+          - type: bool
+
+  buttons:
+    # Button that executes a simple command
+    - name: Echo Button
+      id: echo_button
+      command: "echo pressed"
+
+  selects:
+    # Select with command_template, state_map, and sensor feedback
+    - name: Mode Select
+      id: mode_select
+      command_template: "echo {} > /tmp/hass_smoke_select"
+      state_map:
+        "Low": "low"
+        "Medium": "medium"
+        "High": "high"
+      sensor:
+        type: command
+        command: "cat /tmp/hass_smoke_select 2>/dev/null || echo low"
+        polling_interval: 1
+
+  system:
+    cpu:
+      percent:
+        total: true
+    memory:
+      virtual: {}
+    network:
+      io:
+        total: true
+        rates: true
+        polling_interval: 2
+      ping:
+        - host: 127.0.0.1
+          id: localhost_ping
+          timeout: 3
+          polling_interval: 2
+      dns:
+        - host: localhost
+          id: localhost_dns
+          polling_interval: 2
+    processes:
+      - name: Python
+        pattern: "python"
+        polling_interval: 2

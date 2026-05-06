@@ -1,5 +1,6 @@
 .env*
 config.yaml
+!tests/smoke/config.yaml
 .venv/
 config *.yaml
 __pycache__/

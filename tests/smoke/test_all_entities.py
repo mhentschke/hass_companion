@@ -313,6 +313,211 @@ class TestStateUpdates:
             client.disconnect()
 
 
+class TestNetworkIOEntities:
+    """Verify network IO entities publish discovery and state updates."""
+
+    def test_network_io_discovery(self, mqtt_broker):
+        """Network IO entity publishes discovery config."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" in m.topic and "Network-IO" in m.topic,
+            )
+            assert msg is not None, (
+                f"No discovery for Network IO entity. "
+                f"Config topics: {[m.topic for m in messages if '/config' in m.topic][:30]}"
+            )
+            payload = json.loads(msg.payload.decode())
+            assert "name" in payload
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+    def test_network_io_state(self, mqtt_broker):
+        """Network IO entity publishes numeric state updates."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" not in m.topic
+                and "Network-IO" in m.topic
+                and _is_numeric(m.payload.decode()),
+            )
+            assert msg is not None, (
+                f"No numeric state for Network IO entity. "
+                f"Network messages: {[(m.topic, m.payload.decode()) for m in messages if 'Network' in m.topic and '/config' not in m.topic][:20]}"
+            )
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+
+class TestPingSensorEntities:
+    """Verify ping sensor entities publish discovery and state updates."""
+
+    def test_ping_sensor_discovery(self, mqtt_broker):
+        """Ping sensor publishes discovery config."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" in m.topic and "ping" in m.topic.lower(),
+            )
+            assert msg is not None, (
+                f"No discovery for Ping sensor. "
+                f"Config topics: {[m.topic for m in messages if '/config' in m.topic][:30]}"
+            )
+            payload = json.loads(msg.payload.decode())
+            assert "name" in payload
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+    def test_ping_sensor_state(self, mqtt_broker):
+        """Ping sensor publishes numeric RTT state."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" not in m.topic
+                and "ping" in m.topic.lower()
+                and _is_numeric(m.payload.decode()),
+            )
+            assert msg is not None, (
+                f"No numeric state for Ping sensor. "
+                f"Ping messages: {[(m.topic, m.payload.decode()) for m in messages if 'ping' in m.topic.lower() and '/config' not in m.topic][:20]}"
+            )
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+
+class TestDNSSensorEntities:
+    """Verify DNS sensor entities publish discovery and state updates."""
+
+    def test_dns_sensor_discovery(self, mqtt_broker):
+        """DNS sensor publishes discovery config."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" in m.topic and "dns" in m.topic.lower(),
+            )
+            assert msg is not None, (
+                f"No discovery for DNS sensor. "
+                f"Config topics: {[m.topic for m in messages if '/config' in m.topic][:30]}"
+            )
+            payload = json.loads(msg.payload.decode())
+            assert "name" in payload
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+    def test_dns_sensor_state(self, mqtt_broker):
+        """DNS sensor publishes numeric resolution time state."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" not in m.topic
+                and "dns" in m.topic.lower()
+                and _is_numeric(m.payload.decode()),
+            )
+            assert msg is not None, (
+                f"No numeric state for DNS sensor. "
+                f"DNS messages: {[(m.topic, m.payload.decode()) for m in messages if 'dns' in m.topic.lower() and '/config' not in m.topic][:20]}"
+            )
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+
+class TestProcessEntities:
+    """Verify process monitoring entities publish discovery and state updates."""
+
+    def test_process_sensor_discovery(self, mqtt_broker):
+        """Process sensor publishes discovery config."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" in m.topic and "Process" in m.topic,
+            )
+            assert msg is not None, (
+                f"No discovery for Process sensor. "
+                f"Config topics: {[m.topic for m in messages if '/config' in m.topic][:30]}"
+            )
+            payload = json.loads(msg.payload.decode())
+            assert "name" in payload
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+    def test_process_sensor_state(self, mqtt_broker):
+        """Process sensor publishes state updates (status or numeric)."""
+        port = mqtt_broker
+        client = _connect_mqtt_client(port)
+        messages = _collect_messages(client)
+
+        proc = _start_app(port)
+        try:
+            # Process entity publishes multiple sensors — look for any state update
+            # that contains a process-related value (numeric or status string)
+            msg = _wait_for_message(
+                messages,
+                lambda m: "/config" not in m.topic
+                and "Process" in m.topic
+                and (
+                    _is_numeric(m.payload.decode())
+                    or m.payload.decode() in ("running", "sleeping", "Not Running")
+                ),
+            )
+            assert msg is not None, (
+                f"No state for Process sensor. "
+                f"Process messages: {[(m.topic, m.payload.decode()) for m in messages if 'Process' in m.topic and '/config' not in m.topic][:20]}"
+            )
+        finally:
+            _stop_app(proc)
+            client.loop_stop()
+            client.disconnect()
+
+
 class TestInteractiveCommands:
     """Verify interactive entities respond to MQTT commands."""
 
