@@ -7,12 +7,13 @@ until the old code is removed in task 11.
 
 from core.entities.base import BaseEntity
 from core.entities.binary_sensor import BinarySensor, CommandBinarySensor
+from core.entities.button import Button
 from core.entities.fetcher import CommandFetcher, StateFetcher
 from core.entities.sensor import CommandSensor, Sensor
 
 # Re-export legacy classes so `import core.entities as core_entities` still works
 from core.entities._legacy import (  # noqa: F401
-    Button,
+    Button as LegacyButton,
     Entity,
     MultiPollingSensor,
     PollingSensor,
@@ -21,13 +22,14 @@ from core.entities._legacy import (  # noqa: F401
 __all__ = [
     "BaseEntity",
     "BinarySensor",
+    "Button",
     "CommandBinarySensor",
     "CommandFetcher",
     "CommandSensor",
     "Sensor",
     "StateFetcher",
     # Legacy
-    "Button",
+    "LegacyButton",
     "Entity",
     "MultiPollingSensor",
     "PollingSensor",
