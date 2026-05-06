@@ -76,6 +76,7 @@ class SensorConfig(BaseModel):
     shell: str = "bash"
     polling_interval: Optional[float] = None
     polling_rate: Optional[float] = None
+    command_timeout: float = 30.0
     device: Optional[str] = None
     device_class: Optional[str] = None
     unit_of_measurement: Optional[str] = None
