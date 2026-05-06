@@ -112,6 +112,7 @@ class SwitchConfig(BaseModel):
     command_on: str
     command_off: str
     shell: str = "bash"
+    command_timeout: float = 30.0
     device: Optional[str] = None
     icon: Optional[str] = None
     binary_sensor: Optional[BinarySensorConfig] = None

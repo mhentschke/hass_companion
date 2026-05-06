@@ -9,7 +9,9 @@ from core.entities.base import BaseEntity
 from core.entities.binary_sensor import BinarySensor, CommandBinarySensor
 from core.entities.button import Button
 from core.entities.fetcher import CommandFetcher, StateFetcher
+from core.entities.interactive import InteractiveEntity
 from core.entities.sensor import CommandSensor, Sensor
+from core.entities.switch import Switch
 
 # Re-export legacy classes so `import core.entities as core_entities` still works
 from core.entities._legacy import (  # noqa: F401
@@ -26,8 +28,10 @@ __all__ = [
     "CommandBinarySensor",
     "CommandFetcher",
     "CommandSensor",
+    "InteractiveEntity",
     "Sensor",
     "StateFetcher",
+    "Switch",
     # Legacy
     "LegacyButton",
     "Entity",
