@@ -43,7 +43,7 @@ class BinarySensor(Sensor):
             icon=self._config.icon,
             device_class=getattr(self._config, "device_class", None),
         )
-        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info)
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
         return HABinarySensor(settings)
 
 
@@ -55,4 +55,27 @@ class CommandBinarySensor(BinarySensor):
             self._config,
             callback=self._on_value,
             parser_configs=self._config.parse,
+            availability_callback=self._on_availability,
         )
+
+    def _on_availability(self, available: bool) -> None:
+        """Publish availability state to HA entity."""
+        self._ha_entity.set_availability(available)
+
+    def _create_ha_entity(self):
+        """Create HA binary sensor entity via ha-mqtt-discoverable."""
+        from ha_mqtt_discoverable import Settings as HASettings
+        from ha_mqtt_discoverable.sensors import (
+            BinarySensor as HABinarySensor,
+            BinarySensorInfo as HABinarySensorInfo,
+        )
+
+        entity_info = HABinarySensorInfo(
+            name=self._config.name,
+            unique_id=self._config.id or self._config.name,
+            device=self._device,
+            icon=self._config.icon,
+            device_class=getattr(self._config, "device_class", None),
+        )
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
+        return HABinarySensor(settings)

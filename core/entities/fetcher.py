@@ -27,9 +27,11 @@ class StateFetcher:
         callback: Callable[[Any], None],
         *,
         parser_configs=None,
+        availability_callback: Callable[[bool], None] | None = None,
     ):
         self._config = config
         self._callback = callback
+        self._availability_callback = availability_callback
         self._interval = config.get_polling_interval(10.0)
         self._pipeline = build_pipeline(parser_configs or [])
         self._exit = threading.Event()
@@ -76,6 +78,8 @@ class StateFetcher:
         if not self._available:
             self._available = True
             logger.info("Fetcher is now available")
+            if self._availability_callback:
+                self._availability_callback(True)
 
     def _record_failure(self) -> None:
         """Increment failure count and mark unavailable if threshold reached."""
@@ -86,6 +90,8 @@ class StateFetcher:
                 "Fetcher is now unavailable after %d consecutive failures",
                 self._failure_count,
             )
+            if self._availability_callback:
+                self._availability_callback(False)
 
     @property
     def available(self) -> bool:
@@ -101,8 +107,9 @@ class CommandFetcher(StateFetcher):
         callback: Callable[[Any], None],
         *,
         parser_configs=None,
+        availability_callback: Callable[[bool], None] | None = None,
     ):
-        super().__init__(config, callback, parser_configs=parser_configs)
+        super().__init__(config, callback, parser_configs=parser_configs, availability_callback=availability_callback)
         self._command = config.command
         self._timeout = config.command_timeout
         self._shell = getattr(config, "shell", "bash")

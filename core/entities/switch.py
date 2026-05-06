@@ -37,7 +37,7 @@ class Switch(InteractiveEntity):
             device=self._device,
             icon=self._config.icon,
         )
-        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info)
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
         return HASwitch(settings, self._on_command)
 
     def _setup_feedback(self) -> None:
@@ -47,7 +47,12 @@ class Switch(InteractiveEntity):
                 self._config.binary_sensor,
                 callback=self._on_feedback,
                 parser_configs=self._config.binary_sensor.parse,
+                availability_callback=self._on_availability,
             )
+
+    def _on_availability(self, available: bool) -> None:
+        """Publish availability state to HA entity."""
+        self._ha_entity.set_availability(available)
 
     def _on_command(self, client, user_data, message) -> None:
         """MQTT callback when switch command is received."""

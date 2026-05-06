@@ -45,7 +45,12 @@ class CommandSensor(Sensor):
             self._config,
             callback=self._on_value,
             parser_configs=self._config.parse,
+            availability_callback=self._on_availability,
         )
+
+    def _on_availability(self, available: bool) -> None:
+        """Publish availability state to HA entity."""
+        self._ha_entity.set_availability(available)
 
     def _create_ha_entity(self):
         """Create HA sensor entity via ha-mqtt-discoverable."""
@@ -63,5 +68,5 @@ class CommandSensor(Sensor):
             unit_of_measurement=getattr(self._config, "unit_of_measurement", None),
             device_class=getattr(self._config, "device_class", None),
         )
-        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info)
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
         return HASensor(settings)
