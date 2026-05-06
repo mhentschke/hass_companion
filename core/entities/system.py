@@ -421,6 +421,17 @@ def create_system_entities(system_config: SystemConfig | None, mqtt_settings, de
                     config=ping_config,
                 ))
 
+        # --- DNS sensors ---
+        if "dns" in network and network["dns"]:
+            from core.network_sensors import DNSSensor
+            from core.config import DNSHostConfig
+            for dns_entry in network["dns"]:
+                dns_config = DNSHostConfig(**dns_entry) if isinstance(dns_entry, dict) else dns_entry
+                entities.append(DNSSensor(
+                    mqtt_settings, device,
+                    config=dns_config,
+                ))
+
     # --- Processes ---
     if "processes" in config_dict and config_dict["processes"]:
         for proc_config in config_dict["processes"]:
