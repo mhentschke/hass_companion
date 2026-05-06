@@ -2,6 +2,7 @@ import psutil
 import time
 import re
 import copy
+from typing import Any
 
 def cpu_freq(*args, **kwargs):
     """Parse CPU frequency information."""
@@ -235,32 +236,77 @@ def sensors_fans():
     result = dict_round(result, precision=1)
     return result
 
-processes_cache = {}
-process_re = {}
+class ProcessMonitor:
+    """Encapsulates process lookup and caching for a single regex pattern.
 
-def get_process(pattern):
-    if pattern not in process_re:
-        process_re[pattern] = re.compile(pattern)
-    if pattern not in processes_cache:
+    Each instance monitors one process pattern. Caches the psutil.Process
+    reference and re-scans on NoSuchProcess or when the process is not found.
+    """
+
+    def __init__(self, pattern: str):
+        self._pattern = pattern
+        self._regex = re.compile(pattern)
+        self._cached_process: "psutil.Process | None" = None
+
+    def _find_process(self) -> "psutil.Process | None":
+        """Scan running processes for one matching the regex pattern."""
         for proc in psutil.process_iter(['pid', 'name']):
-            if process_re[pattern].match(proc.info['name']):
-                processes_cache[pattern] = proc
-                break
-    if pattern in processes_cache:
-        return processes_cache[pattern]
-    return None
+            try:
+                if self._regex.match(proc.info['name']):
+                    return proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return None
 
-def process_sensors(pattern):
-    proc = get_process(pattern)
-    stats = {"status": "Not Running", "cpu_percent": 0.0, "memory_percent": 0.0, "memory_rss": 0.0, "memory_vms": 0.0}
-    if proc is not None:
-        proc = processes_cache[pattern]
-        with proc.oneshot():
-            stats["status"] = proc.status().capitalize()
-            stats["cpu_percent"] = proc.cpu_percent()
-            stats["memory_percent"] = proc.memory_percent()
-            stats["memory_rss"] = proc.memory_info().rss / (1024 ** 2)  # Convert bytes to MB
-            stats["memory_vms"] = proc.memory_info().vms / (1024 ** 2)  # Convert bytes to MB
-        
+    def get_stats(self) -> dict[str, Any]:
+        """Return process stats dict with status, cpu_percent, memory_percent, memory_rss, memory_vms.
+
+        Returns "Not Running" state with zero metrics if process is not found.
+        Handles NoSuchProcess by clearing cache and returning "Not Running".
+        """
+        not_running = {
+            "status": "Not Running",
+            "cpu_percent": 0.0,
+            "memory_percent": 0.0,
+            "memory_rss": 0.0,
+            "memory_vms": 0.0,
+        }
+
+        # Try cached process first
+        if self._cached_process is not None:
+            try:
+                with self._cached_process.oneshot():
+                    stats = {
+                        "status": self._cached_process.status().capitalize(),
+                        "cpu_percent": self._cached_process.cpu_percent(),
+                        "memory_percent": round(self._cached_process.memory_percent(), 2),
+                        "memory_rss": round(self._cached_process.memory_info().rss / (1024 ** 2), 2),
+                        "memory_vms": round(self._cached_process.memory_info().vms / (1024 ** 2), 2),
+                    }
+                return stats
+            except psutil.NoSuchProcess:
+                # Process disappeared — clear cache
+                self._cached_process = None
+                return not_running
+
+        # No cached process — scan for it
+        proc = self._find_process()
+        if proc is None:
+            return not_running
+
+        self._cached_process = proc
+        try:
+            with proc.oneshot():
+                stats = {
+                    "status": proc.status().capitalize(),
+                    "cpu_percent": proc.cpu_percent(),
+                    "memory_percent": round(proc.memory_percent(), 2),
+                    "memory_rss": round(proc.memory_info().rss / (1024 ** 2), 2),
+                    "memory_vms": round(proc.memory_info().vms / (1024 ** 2), 2),
+                }
+            return stats
+        except psutil.NoSuchProcess:
+            self._cached_process = None
+            return not_running
 
 

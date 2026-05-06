@@ -177,3 +177,84 @@ class TestNetIORateCalculation:
         assert result["bytes_recv"] > 0
         assert result["packets_sent"] > 0
         assert result["packets_recv"] > 0
+
+
+# --- ProcessMonitor ---
+
+class TestProcessMonitor:
+    def test_get_stats_process_exists(self):
+        """ProcessMonitor returns stats when a matching process is found."""
+        from unittest.mock import patch, Mock
+        from core.psutil_bindings import ProcessMonitor
+
+        mock_proc = Mock()
+        mock_proc.info = {'pid': 1234, 'name': 'python3'}
+        mock_proc.status.return_value = 'running'
+        mock_proc.cpu_percent.return_value = 5.5
+        mock_proc.memory_percent.return_value = 2.3456
+        mem_info = Mock()
+        mem_info.rss = 100 * 1024 * 1024  # 100 MB
+        mem_info.vms = 500 * 1024 * 1024  # 500 MB
+        mock_proc.memory_info.return_value = mem_info
+        mock_proc.oneshot.return_value.__enter__ = Mock(return_value=None)
+        mock_proc.oneshot.return_value.__exit__ = Mock(return_value=False)
+
+        with patch('psutil.process_iter', return_value=[mock_proc]):
+            monitor = ProcessMonitor("python.*")
+            stats = monitor.get_stats()
+
+        assert stats["status"] == "Running"
+        assert stats["cpu_percent"] == 5.5
+        assert stats["memory_percent"] == 2.35
+        assert stats["memory_rss"] == 100.0
+        assert stats["memory_vms"] == 500.0
+
+    def test_get_stats_process_not_found(self):
+        """ProcessMonitor returns 'Not Running' when no process matches."""
+        from unittest.mock import patch
+        from core.psutil_bindings import ProcessMonitor
+
+        with patch('psutil.process_iter', return_value=[]):
+            monitor = ProcessMonitor("nonexistent_app")
+            stats = monitor.get_stats()
+
+        assert stats["status"] == "Not Running"
+        assert stats["cpu_percent"] == 0.0
+        assert stats["memory_percent"] == 0.0
+        assert stats["memory_rss"] == 0.0
+        assert stats["memory_vms"] == 0.0
+
+    def test_get_stats_nosuchprocess_clears_cache(self):
+        """ProcessMonitor handles NoSuchProcess by clearing cache and returning Not Running."""
+        from unittest.mock import patch, Mock, PropertyMock
+        import psutil as real_psutil
+        from core.psutil_bindings import ProcessMonitor
+
+        mock_proc = Mock()
+        mock_proc.info = {'pid': 1234, 'name': 'myapp'}
+        mock_proc.status.return_value = 'running'
+        mock_proc.cpu_percent.return_value = 10.0
+        mock_proc.memory_percent.return_value = 5.0
+        mem_info = Mock()
+        mem_info.rss = 50 * 1024 * 1024
+        mem_info.vms = 200 * 1024 * 1024
+        mock_proc.memory_info.return_value = mem_info
+        mock_proc.oneshot.return_value.__enter__ = Mock(return_value=None)
+        mock_proc.oneshot.return_value.__exit__ = Mock(return_value=False)
+
+        with patch('psutil.process_iter', return_value=[mock_proc]):
+            monitor = ProcessMonitor("myapp")
+            # First call succeeds and caches the process
+            stats = monitor.get_stats()
+            assert stats["status"] == "Running"
+
+        # Now simulate NoSuchProcess on next call (process died)
+        mock_proc.oneshot.return_value.__enter__ = Mock(
+            side_effect=real_psutil.NoSuchProcess(1234)
+        )
+
+        stats = monitor.get_stats()
+        assert stats["status"] == "Not Running"
+        assert stats["cpu_percent"] == 0.0
+        # Cache should be cleared — _cached_process is None
+        assert monitor._cached_process is None

@@ -18,6 +18,7 @@ from core.config import (
     DEFAULT_SYSTEM_FANS_INTERVAL,
     DEFAULT_SYSTEM_MEMORY_INTERVAL,
     DEFAULT_SYSTEM_NETWORK_IO_INTERVAL,
+    DEFAULT_SYSTEM_PROCESS_INTERVAL,
     DEFAULT_SYSTEM_TEMPS_INTERVAL,
     SystemConfig,
 )
@@ -407,6 +408,32 @@ def create_system_entities(system_config: SystemConfig | None, mqtt_settings, de
                     icon="mdi:network",
                     units={},
                 ))
+
+    # --- Processes ---
+    if "processes" in config_dict and config_dict["processes"]:
+        for proc_config in config_dict["processes"]:
+            proc_name = proc_config["name"]
+            proc_id = proc_config.get("id") or proc_name.lower().replace(" ", "_")
+            proc_pattern = proc_config["pattern"]
+            proc_interval = proc_config.get("polling_interval", DEFAULT_SYSTEM_PROCESS_INTERVAL)
+
+            monitor = psutil_bindings.ProcessMonitor(proc_pattern)
+
+            entities.append(SystemMultiSensor(
+                mqtt_settings, device,
+                name=f"Process {proc_name}",
+                unique_id=f"process_{proc_id}",
+                fn=monitor.get_stats,
+                interval=proc_interval,
+                icon="mdi:application",
+                units={
+                    "status": None,
+                    "cpu_percent": "%",
+                    "memory_percent": "%",
+                    "memory_rss": "MB",
+                    "memory_vms": "MB",
+                },
+            ))
 
     logger.info("Created %d system entities", len(entities))
     return entities
