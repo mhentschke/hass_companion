@@ -1,15 +1,17 @@
+import asyncio
+import signal
+import os
+import logging
+
 from ha_mqtt_discoverable import Settings as HASettings
 from ha_mqtt_discoverable.sensors import (
     DeviceInfo as HADeviceInfo,
 )
+from dotenv import load_dotenv
+
 from core.config import load_config
 from core.factory import create_entity as factory_create_entity
 from core.entities.system import create_system_entities
-import signal
-import sys
-import os
-import logging
-from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -26,22 +28,6 @@ def setup_logging():
 
 
 load_dotenv()
-
-# Global entity lists for shutdown access
-entities: list = []
-
-
-def shutdown():
-    for entity in entities:
-        if hasattr(entity, 'stop'):
-            entity.stop()
-
-
-def shutdown_handler(sig, frame):
-    logger.info("Termination signal received, shutting down")
-    shutdown()
-    logger.info("All done. Exiting!")
-    sys.exit(0)
 
 
 def resolve_device(entity_config, ha_device, ha_devices):
@@ -62,11 +48,41 @@ def load_entities_via_factory(entity_type: str, entity_configs: list, mqtt_setti
     return created
 
 
-if __name__ == "__main__":
-    setup_logging()
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
+def _disconnect_mqtt_clients(entities: list) -> None:
+    """Disconnect all MQTT clients from ha-mqtt-discoverable entities.
 
+    Each HA entity created by ha-mqtt-discoverable has an internal paho-mqtt
+    client with loop_start() running. We must stop these to allow clean exit.
+    """
+    seen_clients = set()
+    for entity in entities:
+        # Single entities (Entity subclasses)
+        ha_entity = getattr(entity, '_ha_entity', None)
+        if ha_entity:
+            client = getattr(ha_entity, 'mqtt_client', None)
+            if client and id(client) not in seen_clients:
+                seen_clients.add(id(client))
+                try:
+                    client.disconnect()
+                    client.loop_stop()
+                except Exception:
+                    pass
+        # Composite entities (SystemMultiSensor) have multiple HA entities
+        ha_entities = getattr(entity, '_ha_entities', None)
+        if ha_entities and isinstance(ha_entities, dict):
+            for ha_ent in ha_entities.values():
+                client = getattr(ha_ent, 'mqtt_client', None)
+                if client and id(client) not in seen_clients:
+                    seen_clients.add(id(client))
+                    try:
+                        client.disconnect()
+                        client.loop_stop()
+                    except Exception:
+                        pass
+
+
+async def main():
+    """Async entry point — create entities and run them concurrently."""
     app_config = load_config('config.yaml')
 
     mqtt_settings = HASettings.MQTT(
@@ -86,7 +102,8 @@ if __name__ == "__main__":
         ha_additional_device_info = HADeviceInfo(name=device_config.name, identifiers=device_id)
         ha_devices[device_id] = ha_additional_device_info
 
-    # Create entities via factory
+    # Create entities via factory (sync init is fine)
+    entities: list = []
     entities += load_entities_via_factory("sensor", app_config.entities.sensors, mqtt_settings, ha_device, ha_devices)
     entities += load_entities_via_factory("binary_sensor", app_config.entities.binary_sensors, mqtt_settings, ha_device, ha_devices)
     entities += load_entities_via_factory("switch", app_config.entities.switches, mqtt_settings, ha_device, ha_devices)
@@ -97,15 +114,45 @@ if __name__ == "__main__":
     if app_config.entities.system:
         entities += create_system_entities(app_config.entities.system, mqtt_settings, ha_device)
 
-    # Start all entities (backward compat bridge until async entry point in phase 3.4)
-    for entity in entities:
-        entity.start()
+    # Shared shutdown event
+    shutdown_event = asyncio.Event()
+
+    def signal_handler():
+        logger.info("Shutdown signal received")
+        shutdown_event.set()
+        for entity in entities:
+            if hasattr(entity, 'stop'):
+                entity.stop()
+
+    # Register signal handlers via the event loop
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    # Launch all entity run() coroutines as tasks
+    tasks = [asyncio.create_task(entity.run()) for entity in entities if hasattr(entity, 'run')]
 
     logger.info("Started %d entities", len(entities))
 
-    try:
-        signal.pause()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        shutdown()
+    # Wait for shutdown signal
+    await shutdown_event.wait()
+
+    # Give tasks time to finish gracefully (5s timeout)
+    if tasks:
+        done, pending = await asyncio.wait(tasks, timeout=5.0)
+        for task in pending:
+            logger.warning("Force-cancelling task: %s", task.get_name())
+            task.cancel()
+        # Await cancelled tasks to suppress warnings
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    # Disconnect all MQTT clients to allow clean process exit
+    _disconnect_mqtt_clients(entities)
+
+    logger.info("Shutdown complete")
+
+
+if __name__ == "__main__":
+    setup_logging()
+    asyncio.run(main())
