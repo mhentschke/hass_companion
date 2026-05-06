@@ -18,8 +18,10 @@ from core.config import (
     DEFAULT_SYSTEM_FANS_INTERVAL,
     DEFAULT_SYSTEM_MEMORY_INTERVAL,
     DEFAULT_SYSTEM_NETWORK_IO_INTERVAL,
+    DEFAULT_SYSTEM_PING_INTERVAL,
     DEFAULT_SYSTEM_PROCESS_INTERVAL,
     DEFAULT_SYSTEM_TEMPS_INTERVAL,
+    PingHostConfig,
     SystemConfig,
 )
 from core.rate import RateCalculator
@@ -407,6 +409,16 @@ def create_system_entities(system_config: SystemConfig | None, mqtt_settings, de
                     interval=io_interval,
                     icon="mdi:network",
                     units={},
+                ))
+
+        # --- Ping sensors ---
+        if "ping" in network and network["ping"]:
+            from core.network_sensors import PingSensor
+            for ping_entry in network["ping"]:
+                ping_config = PingHostConfig(**ping_entry) if isinstance(ping_entry, dict) else ping_entry
+                entities.append(PingSensor(
+                    mqtt_settings, device,
+                    config=ping_config,
                 ))
 
     # --- Processes ---
