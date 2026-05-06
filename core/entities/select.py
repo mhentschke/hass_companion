@@ -6,10 +6,10 @@ CommandFetcher for state feedback with inverse state map.
 """
 
 import logging
-import subprocess
 
 from core.entities.fetcher import CommandFetcher
 from core.entities.interactive import InteractiveEntity
+from core.subprocess import CommandFailed, CommandTimeout, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -62,30 +62,25 @@ class Select(InteractiveEntity):
         self._ha_entity.set_availability(available)
 
     def _on_command(self, client, user_data, message) -> None:
-        """MQTT callback when a selection is received."""
+        """MQTT callback when a selection is received — dispatch to async queue."""
         payload = message.payload.decode()
-        self._execute_action(payload)
+        self._dispatch_command(payload)
 
     def _on_feedback(self, value) -> None:
         """Apply inverse state map to feedback value before updating state."""
         display_value = self._inverse_map.get(str(value), str(value))
         self._update_state(display_value)
 
-    def _execute_action(self, payload: str) -> None:
-        """Map via state_map, format command template, execute."""
+    async def _execute_action(self, payload: str) -> None:
+        """Map via state_map, format command template, execute asynchronously."""
         mapped = self._state_map.get(payload, payload)
         command = self._config.command_template.format(mapped)
         shell = self._config.shell
         timeout = getattr(self._config, "command_timeout", 30.0)
 
         try:
-            subprocess.run(
-                [shell, "--noprofile", "--norc", "-c", command],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
+            await run_command(command, shell, timeout)
+        except CommandTimeout:
             logger.warning(
                 "Select '%s' command timed out after %ss: %s",
                 self._config.name,
@@ -93,7 +88,7 @@ class Select(InteractiveEntity):
                 command,
             )
             return
-        except Exception as e:
+        except CommandFailed as e:
             logger.error(
                 "Select '%s' command failed: %s",
                 self._config.name,

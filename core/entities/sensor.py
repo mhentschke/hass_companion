@@ -22,11 +22,18 @@ class Sensor(Entity):
     def __init__(self, config, mqtt_settings, device, *, _ha_entity=None):
         super().__init__(config, mqtt_settings, device, _ha_entity=_ha_entity)
         self._fetcher = self._create_fetcher()
-        self._fetcher.start()
 
     def _create_fetcher(self) -> StateFetcher:
         """Subclasses provide the appropriate fetcher type."""
         raise NotImplementedError
+
+    def start(self) -> None:
+        """Start the fetcher in a background thread (backward compat bridge)."""
+        self._fetcher.start()
+
+    async def run(self) -> None:
+        """Run the fetcher's async poll loop."""
+        await self._fetcher.run()
 
     def _on_value(self, value) -> None:
         """Callback from fetcher — publish to HA entity."""

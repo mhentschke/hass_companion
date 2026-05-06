@@ -97,6 +97,10 @@ if __name__ == "__main__":
     if app_config.entities.system:
         entities += create_system_entities(app_config.entities.system, mqtt_settings, ha_device)
 
+    # Start all entities (backward compat bridge until async entry point in phase 3.4)
+    for entity in entities:
+        entity.start()
+
     logger.info("Started %d entities", len(entities))
 
     try:

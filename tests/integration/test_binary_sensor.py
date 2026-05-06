@@ -21,6 +21,8 @@ def _make_binary_sensor(command="echo 1", parse=None, interval=0.1, _ha_entity=N
     )
     mock_ha = _ha_entity or Mock()
     sensor = CommandBinarySensor(config, mqtt_settings=None, device=None, _ha_entity=mock_ha)
+    # Manually start the fetcher (run() is now async, start() is the compat bridge)
+    sensor._fetcher.start()
     return sensor, mock_ha
 
 

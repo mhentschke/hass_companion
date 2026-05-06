@@ -69,7 +69,6 @@ class SystemMultiSensor(CompositeEntity):
             fn=fn,
             interval=interval,
         )
-        self._fetcher.start()
 
     def _create_ha_entities(self, sample_result) -> None:
         """Create one HA sensor per key (dict) or index (list)."""

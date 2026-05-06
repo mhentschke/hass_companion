@@ -6,10 +6,10 @@ for state feedback from a binary sensor.
 """
 
 import logging
-import subprocess
 
 from core.entities.fetcher import CommandFetcher
 from core.entities.interactive import InteractiveEntity
+from core.subprocess import CommandFailed, CommandTimeout, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +55,15 @@ class Switch(InteractiveEntity):
         self._ha_entity.set_availability(available)
 
     def _on_command(self, client, user_data, message) -> None:
-        """MQTT callback when switch command is received."""
+        """MQTT callback when switch command is received — dispatch to async queue."""
         payload = message.payload.decode()
         if payload == "ON":
-            self._execute_action("on")
+            self._dispatch_command("on")
         elif payload == "OFF":
-            self._execute_action("off")
+            self._dispatch_command("off")
 
-    def _execute_action(self, payload: str) -> None:
-        """Execute the on or off command."""
+    async def _execute_action(self, payload: str) -> None:
+        """Execute the on or off command asynchronously."""
         command = (
             self._config.command_on if payload == "on" else self._config.command_off
         )
@@ -71,13 +71,8 @@ class Switch(InteractiveEntity):
         timeout = self._config.command_timeout
 
         try:
-            subprocess.run(
-                [shell, "--noprofile", "--norc", "-c", command],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
+            await run_command(command, shell, timeout)
+        except CommandTimeout:
             logger.warning(
                 "Switch '%s' command timed out after %ss: %s",
                 self._config.name,
@@ -85,7 +80,7 @@ class Switch(InteractiveEntity):
                 command,
             )
             return
-        except Exception as e:
+        except CommandFailed as e:
             logger.error(
                 "Switch '%s' command failed: %s",
                 self._config.name,

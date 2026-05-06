@@ -1,7 +1,10 @@
-"""Integration tests for Switch entity with mocked subprocess and HA entity."""
+"""Integration tests for Switch entity with async command execution and mocked HA entity."""
 
+import asyncio
 import time
-from unittest.mock import Mock, patch
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
 
 from core.config import BinarySensorConfig, SwitchConfig
 from core.entities.switch import Switch
@@ -30,55 +33,53 @@ def _make_switch(
     return switch, mock_ha
 
 
-@patch("core.entities.switch.subprocess.run")
-def test_switch_executes_on_command(mock_run):
+@pytest.mark.asyncio
+@patch("core.entities.switch.run_command", new_callable=AsyncMock)
+async def test_switch_executes_on_command(mock_run_command):
     """Verify switch executes command_on when ON action is triggered."""
+    mock_run_command.return_value = ""
     switch, mock_ha = _make_switch(command_on="echo ON")
     try:
-        switch._execute_action("on")
-        mock_run.assert_called_once_with(
-            ["bash", "--noprofile", "--norc", "-c", "echo ON"],
-            capture_output=True,
-            text=True,
-            timeout=30.0,
-        )
+        await switch._execute_action("on")
+        mock_run_command.assert_called_once_with("echo ON", "bash", 30.0)
     finally:
         switch.stop()
 
 
-@patch("core.entities.switch.subprocess.run")
-def test_switch_executes_off_command(mock_run):
+@pytest.mark.asyncio
+@patch("core.entities.switch.run_command", new_callable=AsyncMock)
+async def test_switch_executes_off_command(mock_run_command):
     """Verify switch executes command_off when OFF action is triggered."""
+    mock_run_command.return_value = ""
     switch, mock_ha = _make_switch(command_off="echo OFF")
     try:
-        switch._execute_action("off")
-        mock_run.assert_called_once_with(
-            ["bash", "--noprofile", "--norc", "-c", "echo OFF"],
-            capture_output=True,
-            text=True,
-            timeout=30.0,
-        )
+        await switch._execute_action("off")
+        mock_run_command.assert_called_once_with("echo OFF", "bash", 30.0)
     finally:
         switch.stop()
 
 
-@patch("core.entities.switch.subprocess.run")
-def test_switch_optimistic_state_on(mock_run):
+@pytest.mark.asyncio
+@patch("core.entities.switch.run_command", new_callable=AsyncMock)
+async def test_switch_optimistic_state_on(mock_run_command):
     """Verify switch updates HA state optimistically to ON when no feedback sensor."""
+    mock_run_command.return_value = ""
     switch, mock_ha = _make_switch()
     try:
-        switch._execute_action("on")
+        await switch._execute_action("on")
         mock_ha.on.assert_called_once()
     finally:
         switch.stop()
 
 
-@patch("core.entities.switch.subprocess.run")
-def test_switch_optimistic_state_off(mock_run):
+@pytest.mark.asyncio
+@patch("core.entities.switch.run_command", new_callable=AsyncMock)
+async def test_switch_optimistic_state_off(mock_run_command):
     """Verify switch updates HA state optimistically to OFF when no feedback sensor."""
+    mock_run_command.return_value = ""
     switch, mock_ha = _make_switch()
     try:
-        switch._execute_action("off")
+        await switch._execute_action("off")
         mock_ha.off.assert_called_once()
     finally:
         switch.stop()
@@ -96,6 +97,8 @@ def test_switch_feedback_sensor_routes_state(mock_run_command):
         },
     )
     try:
+        # Start the feedback fetcher via compat bridge
+        switch.start()
         # Wait for feedback fetcher to poll
         time.sleep(0.3)
         # Feedback sensor should have called _update_state via _on_feedback
@@ -104,11 +107,13 @@ def test_switch_feedback_sensor_routes_state(mock_run_command):
         switch.stop()
 
 
+@pytest.mark.asyncio
 @patch("core.entities.fetcher.run_command")
-@patch("core.entities.switch.subprocess.run")
-def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_run_command):
+@patch("core.entities.switch.run_command", new_callable=AsyncMock)
+async def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_fetcher_run):
     """Verify switch does NOT update state optimistically when feedback sensor exists."""
-    mock_run_command.return_value = "0"
+    mock_fetcher_run.return_value = "0"
+    mock_switch_run.return_value = ""
     switch, mock_ha = _make_switch(
         binary_sensor={
             "command": "echo 0",
@@ -119,7 +124,7 @@ def test_switch_no_optimistic_update_with_feedback(mock_switch_run, mock_run_com
     try:
         # Reset mock to clear any calls from feedback fetcher startup
         mock_ha.reset_mock()
-        switch._execute_action("on")
+        await switch._execute_action("on")
         # With feedback sensor present, _execute_action should NOT call on()/off()
         mock_ha.on.assert_not_called()
         mock_ha.off.assert_not_called()

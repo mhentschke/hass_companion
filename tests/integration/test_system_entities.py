@@ -79,6 +79,8 @@ class TestSystemMultiSensor:
             interval=0.1,
             _ha_entities=mock_entities,
         )
+        # Manually start the fetcher (run() is now async, start() is the compat bridge)
+        sensor._fetcher.start()
         time.sleep(0.25)
         sensor.stop()
 
@@ -100,6 +102,8 @@ class TestSystemMultiSensor:
             interval=0.1,
             _ha_entities=mock_entities,
         )
+        # Manually start the fetcher (run() is now async, start() is the compat bridge)
+        sensor._fetcher.start()
         time.sleep(0.25)
         sensor.stop()
 

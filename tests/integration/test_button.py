@@ -1,7 +1,9 @@
-"""Integration tests for Button entity with mocked subprocess."""
+"""Integration tests for Button entity with async command execution."""
 
-import subprocess
-from unittest.mock import Mock, patch
+import asyncio
+
+import pytest
+from unittest.mock import AsyncMock, Mock, patch
 
 from core.config import ButtonConfig
 from core.entities.button import Button
@@ -20,32 +22,54 @@ def _make_button(command="echo hello", shell="bash", _ha_entity=None):
     return button, mock_ha
 
 
-@patch("core.entities.button.subprocess.run")
-def test_button_executes_command_on_press(mock_run):
+@pytest.mark.asyncio
+@patch("core.entities.button.run_command", new_callable=AsyncMock)
+async def test_button_executes_command_on_press(mock_run_command):
     """Verify pressing the button executes the configured command."""
+    mock_run_command.return_value = ""
     button, _ = _make_button(command="echo pressed")
-    button._on_press(None, None, None)
-    mock_run.assert_called_once_with(
-        ["bash", "--noprofile", "--norc", "-c", "echo pressed"],
-        capture_output=True,
-        text=True,
-        timeout=30.0,
-    )
+
+    # Dispatch press to the queue
+    button._command_queue.put_nowait("press")
+
+    # Run the button briefly to process the queue item
+    task = asyncio.create_task(button.run())
+    await asyncio.sleep(0.05)
+    button._exit.set()
+    await task
+
+    mock_run_command.assert_called_once_with("echo pressed", "bash", 30.0)
 
 
-@patch("core.entities.button.subprocess.run")
-def test_button_handles_timeout(mock_run):
-    """Verify button handles subprocess timeout gracefully."""
-    mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 999", timeout=30.0)
+@pytest.mark.asyncio
+@patch("core.entities.button.run_command", new_callable=AsyncMock)
+async def test_button_handles_timeout(mock_run_command):
+    """Verify button handles command timeout gracefully."""
+    from core.subprocess import CommandTimeout
+    mock_run_command.side_effect = CommandTimeout("timed out")
     button, _ = _make_button(command="sleep 999")
-    # Should not raise
-    button._on_press(None, None, None)
+
+    button._command_queue.put_nowait("press")
+    task = asyncio.create_task(button.run())
+    await asyncio.sleep(0.05)
+    button._exit.set()
+    await task
+
+    # Should not raise — timeout is handled gracefully
 
 
-@patch("core.entities.button.subprocess.run")
-def test_button_handles_exception(mock_run):
-    """Verify button handles general subprocess exceptions gracefully."""
-    mock_run.side_effect = OSError("Command not found")
+@pytest.mark.asyncio
+@patch("core.entities.button.run_command", new_callable=AsyncMock)
+async def test_button_handles_exception(mock_run_command):
+    """Verify button handles command failure gracefully."""
+    from core.subprocess import CommandFailed
+    mock_run_command.side_effect = CommandFailed("Command not found")
     button, _ = _make_button(command="nonexistent_cmd")
-    # Should not raise
-    button._on_press(None, None, None)
+
+    button._command_queue.put_nowait("press")
+    task = asyncio.create_task(button.run())
+    await asyncio.sleep(0.05)
+    button._exit.set()
+    await task
+
+    # Should not raise — failure is handled gracefully
