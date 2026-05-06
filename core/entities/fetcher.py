@@ -28,11 +28,16 @@ class StateFetcher:
         *,
         parser_configs=None,
         availability_callback: Callable[[bool], None] | None = None,
+        interval: float | None = None,
     ):
         self._config = config
         self._callback = callback
         self._availability_callback = availability_callback
-        self._interval = config.get_polling_interval(10.0)
+        # Use explicit interval if provided, otherwise resolve from config
+        if interval is not None:
+            self._interval = interval
+        else:
+            self._interval = config.get_polling_interval(10.0)
         self._pipeline = build_pipeline(parser_configs or [])
         self._exit = threading.Event()
         self._thread: threading.Thread | None = None
@@ -130,3 +135,45 @@ class CommandFetcher(StateFetcher):
         except Exception as e:
             logger.error("Command failed: %s — %s", self._command, e)
             raise
+
+
+class SystemFetcher(StateFetcher):
+    """Fetches value by calling a Python callable (e.g., psutil function).
+
+    Unlike CommandFetcher which runs a subprocess, SystemFetcher invokes
+    a Python function directly. The function can return any type (scalar,
+    dict, list) — the parser pipeline is skipped since system callables
+    already return typed data.
+    """
+
+    def __init__(
+        self,
+        callback: Callable[[Any], None],
+        *,
+        fn: Callable,
+        interval: float,
+        availability_callback: Callable[[bool], None] | None = None,
+    ):
+        # Pass config=None, interval explicitly — system entities don't use config objects
+        super().__init__(
+            config=None,
+            callback=callback,
+            parser_configs=None,
+            availability_callback=availability_callback,
+            interval=interval,
+        )
+        self._fn = fn
+
+    def _fetch_value(self) -> Any:
+        """Call the Python function and return its raw result."""
+        return self._fn()
+
+    def _execute_poll(self) -> None:
+        """Fetch value and invoke callback directly (no parser pipeline)."""
+        try:
+            result = self._fetch_value()
+            self._callback(result)
+            self._record_success()
+        except Exception as e:
+            logger.error("System fetch failed: %s", e)
+            self._record_failure()

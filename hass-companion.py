@@ -4,6 +4,7 @@ from ha_mqtt_discoverable.sensors import (
 )
 from core.config import load_config
 from core.factory import create_entity as factory_create_entity
+from core.entities.system import create_system_entities
 import signal
 import sys
 import os
@@ -91,6 +92,10 @@ if __name__ == "__main__":
     entities += load_entities_via_factory("switch", app_config.entities.switches, mqtt_settings, ha_device, ha_devices)
     entities += load_entities_via_factory("button", app_config.entities.buttons, mqtt_settings, ha_device, ha_devices)
     entities += load_entities_via_factory("select", app_config.entities.selects, mqtt_settings, ha_device, ha_devices)
+
+    # Create system entities
+    if app_config.entities.system:
+        entities += create_system_entities(app_config.entities.system, mqtt_settings, ha_device)
 
     logger.info("Started %d entities", len(entities))
 

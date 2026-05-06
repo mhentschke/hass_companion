@@ -1,20 +1,20 @@
 """Button entity — executes a command on press, no polling or state feedback.
 
-Button extends BaseEntity directly. It subscribes to MQTT press commands
+Button extends Entity directly. It subscribes to MQTT press commands
 and executes a shell command when triggered.
 """
 
 import logging
 import subprocess
 
-from core.entities.base import BaseEntity
+from core.entities.base import Entity
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BUTTON_TIMEOUT = 30.0
 
 
-class Button(BaseEntity):
+class Button(Entity):
     """Button entity that executes a command on press.
 
     No polling, no fetcher, no state feedback. Simply runs a shell command

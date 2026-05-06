@@ -1,20 +1,20 @@
 """InteractiveEntity — base for entities that receive commands and optionally poll state.
 
 Shared by Switch, Select, and future interactive entity types (Number, Text).
-Extends BaseEntity with MQTT command subscription and optional state feedback
+Extends Entity with MQTT command subscription and optional state feedback
 via a composed StateFetcher.
 """
 
 import logging
 from typing import Any
 
-from core.entities.base import BaseEntity
+from core.entities.base import Entity
 from core.entities.fetcher import StateFetcher
 
 logger = logging.getLogger(__name__)
 
 
-class InteractiveEntity(BaseEntity):
+class InteractiveEntity(Entity):
     """Base for entities that receive MQTT commands and optionally poll state feedback.
 
     Subclasses implement:

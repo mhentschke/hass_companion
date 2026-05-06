@@ -7,13 +7,13 @@ CommandSensor uses a CommandFetcher for subprocess-based value retrieval.
 import logging
 
 from core.config import DEFAULT_SENSOR_INTERVAL
-from core.entities.base import BaseEntity
-from core.entities.fetcher import CommandFetcher, StateFetcher
+from core.entities.base import Entity
+from core.entities.fetcher import CommandFetcher, StateFetcher, SystemFetcher
 
 logger = logging.getLogger(__name__)
 
 
-class Sensor(BaseEntity):
+class Sensor(Entity):
     """Read-only entity that polls a value source and publishes state.
 
     Composes a StateFetcher. Subclasses provide the fetcher type via _create_fetcher().
@@ -69,4 +69,68 @@ class CommandSensor(Sensor):
             device_class=getattr(self._config, "device_class", None),
         )
         settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
+        return HASensor(settings)
+
+
+class SystemSensor(Sensor):
+    """Sensor backed by a Python callable (e.g., psutil.cpu_percent).
+
+    For scalar-returning functions. Creates a single HA sensor entity.
+    Used when a system metric produces a single value (not a dict/list).
+    """
+
+    def __init__(
+        self,
+        mqtt_settings,
+        device,
+        *,
+        fn,
+        name: str,
+        unique_id: str,
+        interval: float,
+        icon: str | None = None,
+        unit_of_measurement: str | None = None,
+        _ha_entity=None,
+    ):
+        self._fn = fn
+        self._system_name = name
+        self._system_id = unique_id
+        self._system_interval = interval
+        self._system_icon = icon
+        self._system_unit = unit_of_measurement
+        # Pass a minimal config-like object — Sensor.__init__ expects config
+        super().__init__(
+            config=None,
+            mqtt_settings=mqtt_settings,
+            device=device,
+            _ha_entity=_ha_entity,
+        )
+
+    def _create_fetcher(self) -> StateFetcher:
+        return SystemFetcher(
+            callback=self._on_value,
+            fn=self._fn,
+            interval=self._system_interval,
+        )
+
+    def _on_availability(self, available: bool) -> None:
+        """Publish availability state to HA entity."""
+        self._ha_entity.set_availability(available)
+
+    def _create_ha_entity(self):
+        """Create HA sensor entity via ha-mqtt-discoverable."""
+        from ha_mqtt_discoverable import Settings as HASettings
+        from ha_mqtt_discoverable.sensors import (
+            Sensor as HASensor,
+            SensorInfo as HASensorInfo,
+        )
+
+        entity_info = HASensorInfo(
+            name=self._system_name,
+            unique_id=self._system_id,
+            device=self._device,
+            icon=self._system_icon,
+            unit_of_measurement=self._system_unit,
+        )
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info)
         return HASensor(settings)

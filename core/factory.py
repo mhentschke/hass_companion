@@ -6,7 +6,7 @@ Provides a single entry point for creating entities from config objects.
 import logging
 from typing import Any
 
-from core.entities.base import BaseEntity
+from core.entities.base import Entity
 from core.entities.binary_sensor import CommandBinarySensor
 from core.entities.button import Button
 from core.entities.select import Select
@@ -15,7 +15,7 @@ from core.entities.switch import Switch
 
 logger = logging.getLogger(__name__)
 
-_ENTITY_REGISTRY: dict[str, type[BaseEntity]] = {
+_ENTITY_REGISTRY: dict[str, type[Entity]] = {
     "sensor": CommandSensor,
     "binary_sensor": CommandBinarySensor,
     "button": Button,
@@ -29,7 +29,7 @@ def create_entity(
     config: Any,
     mqtt_settings: Any,
     device: Any,
-) -> BaseEntity:
+) -> Entity:
     """Create a fully constructed entity instance from type string and config.
 
     Args:
