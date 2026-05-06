@@ -26,6 +26,7 @@ class Select(InteractiveEntity):
     def __init__(self, config, mqtt_settings, device, *, _ha_entity=None):
         self._state_map: dict[str, str] = config.state_map or {}
         self._inverse_map: dict[str, str] = {v: k for k, v in self._state_map.items()}
+        self._last_option: str | None = None
         super().__init__(config, mqtt_settings, device, _ha_entity=_ha_entity)
 
     def _create_ha_entity(self):
@@ -102,4 +103,13 @@ class Select(InteractiveEntity):
 
     def _update_state(self, value) -> None:
         """Update HA select state with the current option."""
-        self._ha_entity.set_current_option(str(value))
+        self._last_option = str(value)
+        self._ha_entity.set_current_option(self._last_option)
+
+    def _republish_state(self) -> None:
+        """Re-publish last known selected option."""
+        if self._last_option is not None:
+            try:
+                self._ha_entity.set_current_option(self._last_option)
+            except Exception as e:
+                logger.warning("Failed to republish state for select '%s': %s", self._config.name, e)

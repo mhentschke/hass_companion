@@ -22,7 +22,17 @@ class BinarySensor(Sensor):
 
     def _on_value(self, value) -> None:
         """Coerce value to bool and publish to HA entity."""
-        self._ha_entity.update_state(bool(value))
+        bool_value = bool(value)
+        self._last_value = bool_value
+        self._ha_entity.update_state(bool_value)
+
+    def _republish_state(self) -> None:
+        """Re-publish last known binary sensor state."""
+        if self._last_value is not None:
+            try:
+                self._ha_entity.update_state(self._last_value)
+            except Exception as e:
+                logger.warning("Failed to republish state for binary sensor: %s", e)
 
     def _create_fetcher(self) -> StateFetcher:
         """Subclasses provide the appropriate fetcher type."""

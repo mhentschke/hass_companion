@@ -30,6 +30,14 @@ class BaseEntity:
         """Clean shutdown. Subclasses should override to stop threads/tasks."""
         pass
 
+    def republish(self) -> None:
+        """Re-publish discovery config and last known state after MQTT reconnection.
+
+        Subclasses should override to re-send their discovery messages and
+        current state to the broker.
+        """
+        pass
+
 
 class Entity(BaseEntity):
     """Single HA entity pattern (1:1). The standard entity type.
@@ -46,6 +54,22 @@ class Entity(BaseEntity):
     def _create_ha_entity(self):
         """Subclasses implement HA entity creation."""
         raise NotImplementedError
+
+    def republish(self) -> None:
+        """Re-publish discovery config and last known state.
+
+        Calls write_config() for discovery, then _republish_state() for state.
+        Subclasses override _republish_state() if they have state to re-send.
+        """
+        try:
+            self._ha_entity.write_config()
+        except Exception as e:
+            logger.warning("Failed to republish discovery: %s", e)
+        self._republish_state()
+
+    def _republish_state(self) -> None:
+        """Re-publish last known state. Override in subclasses with state."""
+        pass
 
 
 class CompositeEntity(BaseEntity):
@@ -103,6 +127,14 @@ class CompositeEntity(BaseEntity):
             for i, value in enumerate(values):
                 if i < len(entity_list):
                     entity_list[i].set_state(value)
+
+    def republish(self) -> None:
+        """Re-publish discovery config and last known state for all sub-entities."""
+        for key, ha_entity in self._ha_entities.items():
+            try:
+                ha_entity.write_config()
+            except Exception as e:
+                logger.warning("Failed to republish discovery for %s/%s: %s", self._base_id, key, e)
 
     def stop(self) -> None:
         """Stop the fetcher."""

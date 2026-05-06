@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from core.config import load_config
 from core.factory import create_entity as factory_create_entity
 from core.entities.system import create_system_entities
+from core.mqtt import MQTTReconnectionManager
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,27 @@ def _disconnect_mqtt_clients(entities: list) -> None:
                         pass
 
 
+def _get_mqtt_client(entities: list):
+    """Extract a paho-mqtt client from the first available entity.
+
+    Used by the reconnection manager to monitor connection state.
+    Returns None if no MQTT client is found.
+    """
+    for entity in entities:
+        ha_entity = getattr(entity, '_ha_entity', None)
+        if ha_entity:
+            client = getattr(ha_entity, 'mqtt_client', None)
+            if client:
+                return client
+        ha_entities = getattr(entity, '_ha_entities', None)
+        if ha_entities and isinstance(ha_entities, dict):
+            for ha_ent in ha_entities.values():
+                client = getattr(ha_ent, 'mqtt_client', None)
+                if client:
+                    return client
+    return None
+
+
 async def main():
     """Async entry point — create entities and run them concurrently."""
     app_config = load_config('config.yaml')
@@ -117,12 +139,23 @@ async def main():
     # Shared shutdown event
     shutdown_event = asyncio.Event()
 
+    # Set up MQTT reconnection manager
+    reconnection_manager = None
+    mqtt_client = _get_mqtt_client(entities)
+    if mqtt_client:
+        reconnection_manager = MQTTReconnectionManager(mqtt_client, entities)
+        logger.info("MQTT reconnection manager initialized")
+    else:
+        logger.warning("No MQTT client found — reconnection manager disabled")
+
     def signal_handler():
         logger.info("Shutdown signal received")
         shutdown_event.set()
         for entity in entities:
             if hasattr(entity, 'stop'):
                 entity.stop()
+        if reconnection_manager:
+            reconnection_manager.stop()
 
     # Register signal handlers via the event loop
     loop = asyncio.get_running_loop()
@@ -131,6 +164,10 @@ async def main():
 
     # Launch all entity run() coroutines as tasks
     tasks = [asyncio.create_task(entity.run()) for entity in entities if hasattr(entity, 'run')]
+
+    # Add reconnection manager as a gathered task
+    if reconnection_manager:
+        tasks.append(asyncio.create_task(reconnection_manager.run()))
 
     logger.info("Started %d entities", len(entities))
 

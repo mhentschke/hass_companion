@@ -22,6 +22,7 @@ class Sensor(Entity):
     def __init__(self, config, mqtt_settings, device, *, _ha_entity=None):
         super().__init__(config, mqtt_settings, device, _ha_entity=_ha_entity)
         self._fetcher = self._create_fetcher()
+        self._last_value = None
 
     def _create_fetcher(self) -> StateFetcher:
         """Subclasses provide the appropriate fetcher type."""
@@ -37,7 +38,16 @@ class Sensor(Entity):
 
     def _on_value(self, value) -> None:
         """Callback from fetcher — publish to HA entity."""
+        self._last_value = value
         self._ha_entity.set_state(value)
+
+    def _republish_state(self) -> None:
+        """Re-publish last known sensor state."""
+        if self._last_value is not None:
+            try:
+                self._ha_entity.set_state(self._last_value)
+            except Exception as e:
+                logger.warning("Failed to republish state for sensor: %s", e)
 
     def stop(self) -> None:
         """Stop the polling fetcher."""

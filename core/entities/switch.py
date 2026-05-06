@@ -23,6 +23,10 @@ class Switch(InteractiveEntity):
     - If no feedback: uses optimistic state (updates immediately after command)
     """
 
+    def __init__(self, config, mqtt_settings, device, *, _ha_entity=None):
+        self._last_state = None
+        super().__init__(config, mqtt_settings, device, _ha_entity=_ha_entity)
+
     def _create_ha_entity(self):
         """Create HA switch entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
@@ -94,7 +98,16 @@ class Switch(InteractiveEntity):
 
     def _update_state(self, value) -> None:
         """Update HA switch state."""
+        self._last_state = value
         if value:
             self._ha_entity.on()
         else:
             self._ha_entity.off()
+
+    def _republish_state(self) -> None:
+        """Re-publish last known switch state."""
+        if self._last_state is not None:
+            try:
+                self._update_state(self._last_state)
+            except Exception as e:
+                logger.warning("Failed to republish state for switch '%s': %s", self._config.name, e)
