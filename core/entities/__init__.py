@@ -6,6 +6,7 @@ until the old code is removed in task 11.
 """
 
 from core.entities.base import BaseEntity
+from core.entities.binary_sensor import BinarySensor, CommandBinarySensor
 from core.entities.fetcher import CommandFetcher, StateFetcher
 from core.entities.sensor import CommandSensor, Sensor
 
@@ -19,6 +20,8 @@ from core.entities._legacy import (  # noqa: F401
 
 __all__ = [
     "BaseEntity",
+    "BinarySensor",
+    "CommandBinarySensor",
     "CommandFetcher",
     "CommandSensor",
     "Sensor",
