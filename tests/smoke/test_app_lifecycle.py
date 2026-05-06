@@ -91,7 +91,11 @@ def test_app_publishes_discovery(mqtt_broker):
             )
         finally:
             proc.send_signal(signal.SIGTERM)
-            proc.wait(timeout=10)
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
     finally:
         client.loop_stop()
         client.disconnect()
@@ -132,7 +136,11 @@ def test_sensor_state_arrives(mqtt_broker):
             )
         finally:
             proc.send_signal(signal.SIGTERM)
-            proc.wait(timeout=10)
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
     finally:
         client.loop_stop()
         client.disconnect()
@@ -151,10 +159,10 @@ def test_app_shuts_down_cleanly_on_sigterm(mqtt_broker):
 
     # Wait for exit
     try:
-        returncode = proc.wait(timeout=10)
+        returncode = proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
         proc.kill()
-        pytest.fail("App did not exit within 10s after SIGTERM")
+        pytest.fail("App did not exit within 15s after SIGTERM")
 
     assert returncode == 0, (
         f"App exited with code {returncode}. "

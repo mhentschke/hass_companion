@@ -23,6 +23,9 @@ class Button(Entity):
 
     def __init__(self, config, mqtt_settings, device, *, _ha_entity=None):
         super().__init__(config, mqtt_settings, device, _ha_entity=_ha_entity)
+        # Buttons have no state, so ha-mqtt-discoverable won't auto-publish
+        # the discovery config. We must call write_config() explicitly.
+        self._ha_entity.write_config()
 
     def _create_ha_entity(self):
         """Create HA button entity via ha-mqtt-discoverable."""
