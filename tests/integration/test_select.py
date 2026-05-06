@@ -53,7 +53,7 @@ async def test_select_optimistic_state_update(mock_run_command):
     select, mock_ha = _make_select()
     try:
         await select._execute_action("High")
-        mock_ha.set_current_option.assert_called_once_with("High")
+        mock_ha.select_option.assert_called_once_with("High")
     finally:
         select.stop()
 
@@ -74,7 +74,7 @@ async def test_select_feedback_sensor_inverse_mapping(mock_run_command):
         task = asyncio.create_task(select.run())
         await asyncio.sleep(0.3)
         # Feedback value "med" should be inverse-mapped to "Medium"
-        mock_ha.set_current_option.assert_called_with("Medium")
+        mock_ha.select_option.assert_called_with("Medium")
     finally:
         select.stop()
         await task
@@ -97,7 +97,7 @@ async def test_select_no_optimistic_update_with_feedback(mock_select_run, mock_f
     try:
         mock_ha.reset_mock()
         await select._execute_action("High")
-        # With feedback sensor present, should NOT call set_current_option
-        mock_ha.set_current_option.assert_not_called()
+        # With feedback sensor present, should NOT call select_option
+        mock_ha.select_option.assert_not_called()
     finally:
         select.stop()

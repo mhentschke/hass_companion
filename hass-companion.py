@@ -4,9 +4,7 @@ import os
 import logging
 
 from ha_mqtt_discoverable import Settings as HASettings
-from ha_mqtt_discoverable.sensors import (
-    DeviceInfo as HADeviceInfo,
-)
+from ha_mqtt_discoverable import DeviceInfo as HADeviceInfo
 from dotenv import load_dotenv
 
 from core.config import load_config

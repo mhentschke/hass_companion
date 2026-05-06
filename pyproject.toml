@@ -5,7 +5,7 @@ description = "A lightweight Home Assistant companion for Linux"
 requires-python = ">=3.12"
 dependencies = [
     "bidict>=0.23,<1.0",
-    "ha-mqtt-discoverable>=0.20,<1.0",
+    "ha-mqtt-discoverable>=0.24,<1.0",
     "paho-mqtt>=2.0,<3.0",
     "pydantic>=2.0",
     "python-dotenv>=1.0",

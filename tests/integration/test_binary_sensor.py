@@ -33,7 +33,7 @@ async def test_binary_sensor_coerces_truthy_to_true():
     task = asyncio.create_task(sensor.run())
     try:
         await asyncio.sleep(0.3)
-        mock_ha.update_state.assert_called_with(True)
+        mock_ha.on.assert_called()
     finally:
         sensor.stop()
         await task
@@ -46,24 +46,21 @@ async def test_binary_sensor_coerces_falsy_to_false():
     task = asyncio.create_task(sensor.run())
     try:
         await asyncio.sleep(0.3)
-        mock_ha.update_state.assert_called_with(False)
+        mock_ha.off.assert_called()
     finally:
         sensor.stop()
         await task
 
 
 @pytest.mark.asyncio
-async def test_binary_sensor_update_state_called_with_boolean():
-    """Verify update_state is always called with a boolean type."""
+async def test_binary_sensor_on_off_called_with_boolean_coercion():
+    """Verify on()/off() is called based on boolean coercion of parsed value."""
     sensor, mock_ha = _make_binary_sensor(command="echo hello", parse=[{"type": "string"}])
     task = asyncio.create_task(sensor.run())
     try:
         await asyncio.sleep(0.3)
-        # Non-empty string "hello" is truthy
-        mock_ha.update_state.assert_called_with(True)
-        # Verify the argument is actually a bool, not just truthy
-        call_arg = mock_ha.update_state.call_args[0][0]
-        assert isinstance(call_arg, bool)
+        # Non-empty string "hello" is truthy → on() should be called
+        mock_ha.on.assert_called()
     finally:
         sensor.stop()
         await task

@@ -24,13 +24,19 @@ class BinarySensor(Sensor):
         """Coerce value to bool and publish to HA entity."""
         bool_value = bool(value)
         self._last_value = bool_value
-        self._ha_entity.update_state(bool_value)
+        if bool_value:
+            self._ha_entity.on()
+        else:
+            self._ha_entity.off()
 
     def _republish_state(self) -> None:
         """Re-publish last known binary sensor state."""
         if self._last_value is not None:
             try:
-                self._ha_entity.update_state(self._last_value)
+                if self._last_value:
+                    self._ha_entity.on()
+                else:
+                    self._ha_entity.off()
             except Exception as e:
                 logger.warning("Failed to republish state for binary sensor: %s", e)
 
