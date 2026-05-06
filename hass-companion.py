@@ -1,28 +1,12 @@
 
 from ha_mqtt_discoverable import Settings as HASettings
 from ha_mqtt_discoverable.sensors import (
-    Sensor as HASensor, 
-    SensorInfo as HASensorInfo, 
-    DeviceInfo as HADeviceInfo, 
-    Switch as HASwitch, 
-    SwitchInfo as HASwitchInfo, 
-    ButtonInfo as HAButtonInfo, 
-    Button as HAButton,
-    BinarySensor as HABinarySensor,
-    BinarySensorInfo as HABinarySensorInfo, 
-    Select as HASelect,
-    SelectInfo as HASelectInfo, 
+    DeviceInfo as HADeviceInfo,
 )
-import core.companion_entities as c_entities
-import core.parsers as parsers
 import core.psutil_bindings as psutil_bindings
 import core.entities as core_entities
 from core.config import (
     load_config,
-    DEFAULT_SENSOR_INTERVAL,
-    DEFAULT_BINARY_SENSOR_INTERVAL,
-    DEFAULT_SWITCH_FEEDBACK_INTERVAL,
-    DEFAULT_SELECT_FEEDBACK_INTERVAL,
     DEFAULT_SYSTEM_CPU_INTERVAL,
     DEFAULT_SYSTEM_MEMORY_INTERVAL,
     DEFAULT_SYSTEM_DISK_USAGE_INTERVAL,
@@ -30,24 +14,14 @@ from core.config import (
     DEFAULT_SYSTEM_TEMPS_INTERVAL,
     DEFAULT_SYSTEM_FANS_INTERVAL,
 )
-import paho.mqtt.client as mqtt_client
-import threading
-import subprocess
-import yaml
-import time
+from core.factory import create_entity as factory_create_entity
 import signal
 import sys
-import re
 import os
 import logging
 import psutil
 from functools import partial
-from typing import Any
-from paho.mqtt.client import Client, MQTTMessage
-from dotenv import load_dotenv 
-from bidict import bidict
-from collections.abc import Iterable
-import copy
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -65,58 +39,11 @@ def setup_logging():
 load_dotenv()
 
 
-def load_sensor(sensor_config, callback, binary = False, default_interval = None):
-    if sensor_config["type"] == "command":
-        # Resolve polling interval using config model if available, else dict fallback
-        if default_interval is None:
-            default_interval = DEFAULT_BINARY_SENSOR_INTERVAL if binary else DEFAULT_SENSOR_INTERVAL
-        if hasattr(sensor_config, 'get_polling_interval'):
-            polling_interval = sensor_config.get_polling_interval(default_interval)
-            sensor_polling_rate = 1.0 / polling_interval
-            sensor_command = sensor_config.command
-            sensor_shell = sensor_config.shell
-        else:
-            polling_interval = sensor_config.get("polling_interval") or (
-                1.0 / sensor_config["polling_rate"] if sensor_config.get("polling_rate") else default_interval
-            )
-            sensor_polling_rate = 1.0 / polling_interval
-            sensor_command = sensor_config.get("command")
-            sensor_shell = sensor_config.get("shell", "bash")
-        if hasattr(sensor_config, 'get_polling_interval'):
-            parser_configs = [p.model_dump() for p in sensor_config.parse]
-        else:
-            parser_configs = sensor_config.get("parse", [])
-        pipeline = []
-        for parser_config in parser_configs:
-            if parser_config["type"] == "int":
-                parser = parsers.IntResultParser() 
-            elif parser_config["type"] == "float":
-                parser = parsers.FloatResultParser() 
-            elif parser_config["type"] == "bool":
-                parser = parsers.BoolResultParser() 
-            elif parser_config["type"] == "string":
-                parser = parsers.StringResultParser()                 
-            elif parser_config["type"] == "compare":
-                operator = parser_config.get("operator")
-                value = parser_config.get("value")
-                parser = parsers.CompareResultParser(operator, value)                 
-            elif parser_config["type"] == "regex":
-                regex = parser_config.get("regex")
-                group = parser_config.get("group")
-                parser = parsers.RegexResultParser(regex, group)
-            elif parser_config["type"] == "state_map":
-                map = bidict(parser_config.get("map"))
-                parser = parsers.StateMapResultParser(map) 
-
-            pipeline.append(parser)
-        if not binary:
-            return(c_entities.CommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=pipeline))
-        else:
-            return(c_entities.BinaryCommandSensor(sensor_command, sensor_polling_rate, callback, sensor_shell, parsers=pipeline))
-
 def shutdown():
-    for s in sensors:
-        s.stop()
+    all_entities = sensors + binary_sensors + switches + buttons + selects + system_entities
+    for entity in all_entities:
+        if hasattr(entity, 'stop'):
+            entity.stop()
 
 def shutdown_handler(sig, frame):
     logger.info("Termination signal received, shutting down sensors")
@@ -125,188 +52,22 @@ def shutdown_handler(sig, frame):
     sys.exit(0)
 
 
-def get_entity_info(entity_config):
-    if "device" in entity_config:
-        device = ha_devices[entity_config["device"]]
-    else:
-        device = ha_device
-
-    entity_info_kwargs = {
-        "name": entity_config["name"], 
-        "unique_id": entity_config.get("id", entity_config["name"]),
-        "device": device,
-        "icon": entity_config.get("icon")
-    }
-    return entity_info_kwargs
-
-def create_binary_sensor(entity_config, mqtt_settings):
-    entity_info_kwargs = get_entity_info(entity_config)
-    entity_info_kwargs.update({ 
-        "device_class": entity_config.get("class"),
-    })
-    ha_entity_info = HABinarySensorInfo(**entity_info_kwargs)
-
-    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-    ha_entity = HABinarySensor(ha_settings)
-    entity = load_sensor(entity_config, ha_entity.update_state, binary = True)
-    return entity, ha_entity
-
-def create_sensor(entity_config, mqtt_settings):
-    entity_info_kwargs = get_entity_info(entity_config)
-    entity_info_kwargs.update({ 
-        "unit_of_measurement": entity_config.get("unit_of_measurement"),
-        "device_class": entity_config.get("class"),
-    })
-    ha_entity_info = HASensorInfo(**entity_info_kwargs)
-
-    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-    ha_entity = HASensor(ha_settings)
-    entity = load_sensor(entity_config, ha_entity.set_state)
-    return entity, ha_entity
+def resolve_device(entity_config):
+    """Resolve the HA device for an entity config (Pydantic model)."""
+    device_key = getattr(entity_config, "device", None)
+    if device_key:
+        return ha_devices[device_key]
+    return ha_device
 
 
-def create_button(entity_config, mqtt_settings):
-    entity_info_kwargs = get_entity_info(entity_config)
-    ha_entity_info = HAButtonInfo(**entity_info_kwargs)
-        
-    button_command = entity_config.get("command")
-    button_shell = entity_config.get("shell", "bash")
-    entity = c_entities.CommandButton(button_command, button_shell)
-
-    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-    def button_press_wrapper(client: Client, user_data, message: MQTTMessage):
-        entity.press()
-    ha_entity = HAButton(ha_settings, button_press_wrapper)
-    ha_entity.write_config()
-    return entity, ha_entity
-
-def create_select(entity_config, mqtt_settings):
-    entity_info_kwargs = get_entity_info(entity_config)
-
-    state_map = bidict(entity_config.get("state_map", {}))
-    options = list(state_map.keys())
-    
-    entity_info_kwargs["options"] = options
-    ha_entity_info = HASelectInfo(**entity_info_kwargs)
-
-    select_command_template = entity_config.get("command_template")
-    select_shell = entity_config.get("shell", "bash")
-    if "sensor" in entity_config:
-        sensor = load_sensor(entity_config["sensor"], lambda v: logger.debug("Select sensor interim value: %s", v), default_interval=DEFAULT_SELECT_FEEDBACK_INTERVAL)
-    else:
-        sensor = None
-    entity = c_entities.Select(select_command_template, select_shell, state_map, sensor)
-
-    ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-    def select_callback(client: Client, user_data, message: MQTTMessage):
-        value = message.payload.decode()
-        entity.select(value)
-    ha_entity = HASelect(ha_settings, select_callback)
-    ha_entity.write_config()
-    def select_option_sanitized(option):
-        try:
-            ha_entity.select_option(option)
-        except RuntimeError as e:
-            logger.error("Error selecting option: %s", e)
-
-    entity.sensor.result_callback = select_option_sanitized
-    return entity, ha_entity
-
-
-def create_entity(entity_type, entity_config, mqtt_settings):
-    if "device" in entity_config:
-        device = ha_devices[entity_config["device"]]
-    else:
-        device = ha_device
-
-    entity_info_kwargs = {
-        "name": entity_config["name"], 
-        "unique_id": entity_config.get("id", entity_config["name"]),
-        "device": device,
-        "icon": entity_config.get("icon")
-    }
-    entity = None
-    ha_entity = None
-    ha_entity_info = None
-
-    if entity_type == "sensor":
-        entity, ha_entity = create_sensor(entity_config, mqtt_settings)
-    elif entity_type == "binary_sensor":
-        entity, ha_entity = create_binary_sensor(entity_config, mqtt_settings)
-    elif entity_type == "switch":
-        ha_entity_info = HASwitchInfo(**entity_info_kwargs)
-
-        entity_command_on = entity_config.get("command_on")
-        entity_command_off = entity_config.get("command_off")
-        switch_shell = entity_config.get("shell", "bash")
-        if "binary_sensor" in entity_config:
-            sensor = load_sensor(entity_config["binary_sensor"], lambda v: logger.debug("Switch sensor interim value: %s", v), binary = True, default_interval=DEFAULT_SWITCH_FEEDBACK_INTERVAL)
-        else:
-            sensor = None
-        entity = c_entities.Switch(entity_command_on, entity_command_off, shell = switch_shell, sensor = sensor,)
-        def switch_callback(client: Client, user_data, message: MQTTMessage):
-            payload = message.payload.decode()
-            if payload == "ON":
-                entity.turn_on()
-                # Let HA know that the switch was successfully activated
-                #my_switch.on()
-            elif payload == "OFF":
-                entity.turn_off()
-                # Let HA know that the switch was successfully deactivated
-                #my_switch.off()
-        ha_settings = HASettings(mqtt = mqtt_settings, entity = ha_entity_info)
-        ha_entity = HASwitch(ha_settings, switch_callback)
-        ha_entity.off()
-        def ha_set_callback(value):
-            if value:
-                ha_entity.on()
-            else:
-                ha_entity.off()
-        entity.sensor.result_callback = ha_set_callback
-    elif entity_type == "button":
-        entity, ha_entity = create_button(entity_config, mqtt_settings)
-    elif entity_type == "select":
-        entity, ha_entity = create_select(entity_config, mqtt_settings)
-
-    return entity, ha_entity
-
-def load_entities(entity_type, entity_configs, mqtt_settings):
+def load_entities_via_factory(entity_type: str, entity_configs: list, mqtt_settings) -> list:
+    """Create entities using the factory, passing Pydantic configs directly."""
     entities = []
-    ha_entities = []
-    for entity_config in entity_configs:
-        # Convert Pydantic models to dicts for existing entity creation functions
-        if hasattr(entity_config, 'model_dump'):
-            config_dict = entity_config.model_dump(exclude_none=True)
-        else:
-            config_dict = entity_config
-        entity, ha_entity = create_entity(entity_type, config_dict, mqtt_settings)
+    for config in entity_configs:
+        device = resolve_device(config)
+        entity = factory_create_entity(entity_type, config, mqtt_settings, device)
         entities.append(entity)
-        ha_entities.append(ha_entity)
-    return entities, ha_entities
-
-def create_ha_entity(entity_type, entity_info, mqtt):
-    if entity_type == "sensor":
-        ha_entity_info_class = HASensorInfo
-        ha_class = HASensor
-    elif entity_type == "switch":
-        ha_entity_info_class = HASwitchInfo
-        ha_class = HASwitch
-    elif entity_type == "button":
-        ha_entity_info_class = HAButtonInfo
-        ha_class = HAButton
-    elif entity_type == "binary_sensor":
-        ha_entity_info_class = HABinarySensorInfo
-        ha_class = HABinarySensor
-    elif entity_type == "select":
-        ha_entity_info_class = HASelectInfo
-        ha_class = HASelect
-    else:
-        raise ValueError(f"Unknown entity type: {entity_type}")
-
-    ha_entity_info = ha_entity_info_class(**entity_info)
-    ha_settings = HASettings(mqtt = mqtt, entity = ha_entity_info)
-    ha_entity = ha_class(ha_settings)
-    return ha_entity
+    return entities
 
 def load_system_cpu_entities(cpu_config, mqtt_settings, ha_device):
     entities = []
@@ -584,11 +345,14 @@ if __name__ == "__main__":
         ha_additional_device_info = HADeviceInfo(name=device_config.name, identifiers=device_id)
         ha_devices[device_id] = ha_additional_device_info
 
-    sensors, ha_sensors = load_entities("sensor", app_config.entities.sensors, mqtt_settings)
-    binary_sensors, ha_binary_sensors = load_entities("binary_sensor", app_config.entities.binary_sensors, mqtt_settings)
-    switches, ha_switches = load_entities("switch", app_config.entities.switches, mqtt_settings)
-    buttons, ha_buttons = load_entities("button", app_config.entities.buttons, mqtt_settings)
-    selects, ha_selects = load_entities("select", app_config.entities.selects, mqtt_settings)
+    # Create entities via factory (Pydantic configs passed directly)
+    sensors = load_entities_via_factory("sensor", app_config.entities.sensors, mqtt_settings)
+    binary_sensors = load_entities_via_factory("binary_sensor", app_config.entities.binary_sensors, mqtt_settings)
+    switches = load_entities_via_factory("switch", app_config.entities.switches, mqtt_settings)
+    buttons = load_entities_via_factory("button", app_config.entities.buttons, mqtt_settings)
+    selects = load_entities_via_factory("select", app_config.entities.selects, mqtt_settings)
+
+    # System entities use different patterns — keep separate for now
     system_entities, ha_system_entities = load_system_entities(app_config.entities.system, mqtt_settings)
 
 
