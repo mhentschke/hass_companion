@@ -57,16 +57,12 @@ class EntityFilter:
 def default_disk_usage_filter() -> EntityFilter:
     """Skip virtual filesystems, NixOS bind mounts, and snap mounts.
 
-    Designed to keep only meaningful, distinct mount points:
-    - Real block devices (/dev/*)
-    - Excludes /nix/store sub-mounts and common NixOS bind-mount noise
-    - Excludes /snap/ mounts
-
-    For NixOS systems with many bind mounts from the same partition,
-    use explicit include filters in config to select specific mountpoints.
+    Uses platform-specific include patterns for real block devices.
     """
+    from core.platform import current_platform
+
     return EntityFilter(
-        include=[r"^/dev/"],
+        include=current_platform.default_disk_includes,
         exclude=[
             r"/nix/store",
             r"/snap/",
@@ -77,14 +73,8 @@ def default_disk_usage_filter() -> EntityFilter:
 def default_network_filter() -> EntityFilter:
     """Skip virtual/container network interfaces.
 
-    Keeps physical NICs and common real interfaces.
+    Uses platform-specific exclude patterns.
     """
-    return EntityFilter(exclude=[
-        r"^veth",
-        r"^docker",
-        r"^br-",
-        r"^virbr",
-        r"^vnet",
-        r"^lo$",
-        r"^macvtap",
-    ])
+    from core.platform import current_platform
+
+    return EntityFilter(exclude=current_platform.default_network_excludes)

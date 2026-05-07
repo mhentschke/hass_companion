@@ -2,23 +2,21 @@ import subprocess
 import re
 import logging
 
+from core.platform import current_platform
+
 logger = logging.getLogger(__name__)
 
 ping_time_regex = re.compile(r"time=([\d.]+) ms")
 ping_packet_loss_regex = re.compile(r"([\d.]+)% packet loss")
 
 
-def ping(host, interface = None, size = None, timeout = None):
-    command = ["ping"]
-    if interface is not None:
-        command += ["-I", interface]
-    if size is not None:
-        command += ["-s", str(size)]
-    if timeout is not None:
-        command += ["-W", str(timeout)]
-
-    command += ["-c", "1"]
-    command += [host]
+def ping(host, interface=None, size=None, timeout=None):
+    command = current_platform.build_ping_command(
+        host,
+        timeout=timeout or 5.0,
+        interface=interface,
+        size=size,
+    )
     return parse_ping(subprocess.run(command, stdout=subprocess.PIPE).stdout.decode("utf-8"))
 
 

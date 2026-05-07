@@ -5,8 +5,16 @@ import copy
 from typing import Any
 
 def cpu_freq(*args, **kwargs):
-    """Parse CPU frequency information."""
+    """Parse CPU frequency information.
+
+    Guards against None return on Apple Silicon (macOS) where
+    cpu_freq(percpu=True) may return None.
+    """
     freqs = psutil.cpu_freq(*args, **kwargs)
+    if freqs is None:
+        if kwargs.get("percpu", False):
+            return []
+        return 0.0
     if kwargs.get("percpu", False):
         result = []
         for core in freqs:
@@ -215,8 +223,13 @@ def net_io_counters_per_nic(include: list[str] | None = None, exclude: list[str]
     return flatten_dict(per_nic)
 
 def sensors_temperatures():
-    """Parse sensor temperatures."""
+    """Parse sensor temperatures.
+
+    Returns empty dict on macOS where sensors_temperatures() returns {}.
+    """
     sensors = psutil.sensors_temperatures()
+    if not sensors:
+        return {}
     result = {}
     for key, value in sensors.items():
         result[key] = {}
@@ -226,8 +239,13 @@ def sensors_temperatures():
     return result
 
 def sensors_fans():
-    """Parse sensor fans."""
+    """Parse sensor fans.
+
+    Returns empty dict on macOS where sensors_fans() returns {}.
+    """
     sensors = psutil.sensors_fans()
+    if not sensors:
+        return {}
     result = {}
     for key, value in sensors.items():
         result[key] = {}

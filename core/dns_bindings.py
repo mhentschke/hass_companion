@@ -2,13 +2,14 @@ import subprocess
 import re
 import logging
 
+from core.platform import current_platform
+
 logger = logging.getLogger(__name__)
 
 dns_lookup_regex = re.compile(r"Query time: ([\d.]+) msec")
 
 def dig(host):
-    command = ["dig"]
-    command += [host]
+    command = current_platform.build_dns_command(host)
     return parse_dig(subprocess.run(command, stdout=subprocess.PIPE).stdout.decode("utf-8"))
 
 

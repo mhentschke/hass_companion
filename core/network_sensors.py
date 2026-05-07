@@ -13,6 +13,7 @@ from core.config import DNSHostConfig, PingHostConfig
 from core.entities.base import CompositeEntity
 from core.dns_bindings import parse_dig
 from core.ping_bindings import parse_ping
+from core.platform import current_platform
 
 logger = logging.getLogger(__name__)
 
@@ -90,14 +91,12 @@ class PingSensor(CompositeEntity):
 
     async def _execute_ping(self) -> None:
         """Run ping via asyncio.create_subprocess_exec(), parse RTT + loss."""
-        command = ["ping"]
-        if self._config.interface:
-            command += ["-I", self._config.interface]
-        if self._config.size is not None:
-            command += ["-s", str(self._config.size)]
-        if self._config.timeout:
-            command += ["-W", str(int(self._config.timeout))]
-        command += ["-c", "1", self._config.host]
+        command = current_platform.build_ping_command(
+            self._config.host,
+            timeout=self._config.timeout or 5.0,
+            interface=self._config.interface,
+            size=self._config.size,
+        )
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -233,7 +232,7 @@ class DNSSensor(CompositeEntity):
 
     async def _execute_dig(self) -> None:
         """Run dig via asyncio.create_subprocess_exec(), parse resolution time."""
-        command = ["dig", self._config.host]
+        command = current_platform.build_dns_command(self._config.host)
 
         try:
             proc = await asyncio.create_subprocess_exec(
