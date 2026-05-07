@@ -9,6 +9,7 @@ from ha_mqtt_discoverable import DeviceInfo as HADeviceInfo
 from dotenv import load_dotenv
 
 from core.config import load_config
+from core.discovery import clean_discovery
 from core.factory import create_entity as factory_create_entity
 from core.entities.system import create_system_entities
 from core.mqtt import MQTTReconnectionManager
@@ -75,6 +76,10 @@ async def main():
     # Single shared MQTT client for all entities
     shared_client = create_shared_mqtt_client(app_config)
 
+    # Clean stale discovery messages if configured
+    if app_config.mqtt.clean_start:
+        clean_discovery(shared_client, app_config.hass.device_name)
+
     mqtt_settings = HASettings.MQTT(
         host=app_config.mqtt.host,
         port=app_config.mqtt.port,
@@ -101,9 +106,13 @@ async def main():
     entities += load_entities_via_factory("button", app_config.entities.buttons, mqtt_settings, ha_device, ha_devices)
     entities += load_entities_via_factory("select", app_config.entities.selects, mqtt_settings, ha_device, ha_devices)
 
-    # Create system entities
+    # Create system entities with sub-device support
     if app_config.entities.system:
-        entities += create_system_entities(app_config.entities.system, mqtt_settings, ha_device)
+        entities += create_system_entities(
+            app_config.entities.system, mqtt_settings, ha_device,
+            sub_devices=app_config.hass.sub_devices,
+            device_name=app_config.hass.device_name,
+        )
 
     # Shared shutdown event
     shutdown_event = asyncio.Event()

@@ -40,11 +40,13 @@ class MQTTConfig(BaseModel):
     port: int = Field(default=1883, ge=1, le=65535)
     username: Optional[str] = None
     password: Optional[str] = None
+    clean_start: bool = False
 
 
 class HassConfig(BaseModel):
     device_name: str
     device_id: str
+    sub_devices: bool = False
 
 
 class DeviceConfig(BaseModel):
@@ -164,6 +166,16 @@ class SystemMemoryConfig(BaseModel):
     swap: Optional[dict] = None
 
 
+class SystemStorageUsageFilters(BaseModel):
+    include: list[str] = []
+    exclude: list[str] = []
+
+
+class SystemStorageUsageConfig(BaseModel):
+    sensors: list[str] = []
+    filters: SystemStorageUsageFilters = SystemStorageUsageFilters()
+
+
 class SystemStorageIOFilters(BaseModel):
     include: list[str] = []
     exclude: list[str] = []
@@ -178,7 +190,7 @@ class SystemStorageIOConfig(BaseModel):
 
 
 class SystemStorageConfig(BaseModel):
-    usage: Optional[dict] = None
+    usage: Optional[SystemStorageUsageConfig] = None
     io: Optional[SystemStorageIOConfig] = None
 
 
@@ -197,7 +209,9 @@ class NetworkIOConfig(BaseModel):
     per_nic: bool = False
     rates: bool = False
     rates_per_nic: bool = False
+    counters: bool = False
     polling_interval: float = DEFAULT_SYSTEM_NETWORK_IO_INTERVAL
+    sensors: list[str] = []
     filters: NetworkIOFilters = NetworkIOFilters()
 
     @field_validator("polling_interval")
