@@ -1,6 +1,6 @@
 # Hass Companion
 
-A lightweight Home Assistant companion application for Linux that communicates via MQTT discovery. It exposes system metrics and user-defined command-based entities to Home Assistant.
+A lightweight Home Assistant companion application for Linux and macOS that communicates via MQTT discovery. It exposes system metrics and user-defined command-based entities to Home Assistant.
 
 Originally created to overcome the lack of solutions like [HASS.Agent](https://www.hass-agent.io/2.0/) for Linux. Designed to be simple, extensible, and effective.
 
@@ -8,6 +8,7 @@ Originally created to overcome the lack of solutions like [HASS.Agent](https://w
 
 - **MQTT Discovery**: Works out of the box with HA's MQTT integration — no manual entity configuration needed
 - **Single MQTT Connection**: All entities share one client for efficiency and reliability
+- **Cross-Platform**: Runs on Linux and macOS with platform-aware defaults
 - **Sensors**: Execute commands and expose output as sensor values with optional parser pipelines
 - **Binary Sensors**: Command-based with boolean enforcement
 - **Switches**: ON/OFF commands with optional state feedback via polling
@@ -29,31 +30,216 @@ Originally created to overcome the lack of solutions like [HASS.Agent](https://w
 - **MQTT Reconnection**: Exponential backoff with automatic state republishing
 - **Graceful Shutdown**: Clean SIGTERM/SIGINT handling
 
-## Install
+## CLI Interface
 
-### Quick Install
+```
+hass-companion [OPTIONS]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--config PATH` | Path to configuration file (default: `config.yaml`) |
+| `--validate` | Validate config and exit (exit 0 = valid, exit 1 = errors) |
+| `--dry-run` | Create entities without connecting to MQTT, print summary and exit |
+| `--log-level LEVEL` | Set logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`) |
+| `--version` | Print version and exit |
+
+### Examples
+
+```bash
+# Run with default config.yaml
+hass-companion
+
+# Run with a custom config path
+hass-companion --config /etc/hass-companion/config.yaml
+
+# Validate configuration without starting
+hass-companion --validate --config /etc/hass-companion/config.yaml
+
+# Preview what entities would be created
+hass-companion --dry-run
+
+# Run with debug logging
+hass-companion --log-level DEBUG
+```
+
+## Installation
+
+### Requirements
+
+- Python 3.12+
+- An MQTT broker (e.g., Mosquitto) connected to Home Assistant
+
+### pipx (Recommended)
+
+`pipx` installs the application in an isolated environment and makes the `hass-companion` command available on your PATH.
 
 ```bash
 git clone https://github.com/mhentschke/hass_companion.git
 cd hass_companion
-./hass-companion.sh install
+pipx install .
 ```
 
-This installs Python dependencies into a venv and offers options to register as a systemd service.
-
-### Manual Install
-
-Requirements: Python 3.12+
+After installation, `hass-companion` is available as a command:
 
 ```bash
+hass-companion --version
+```
+
+### Platform-Specific Install
+
+#### Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install python3-pip pipx
+pipx ensurepath  # adds ~/.local/bin to PATH (restart shell after)
+
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+pipx install .
+```
+
+#### Fedora
+
+```bash
+sudo dnf install python3-pip pipx
+pipx ensurepath
+
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+pipx install .
+```
+
+#### Arch Linux
+
+```bash
+sudo pacman -S python-pipx
+pipx ensurepath
+
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+pipx install .
+```
+
+#### NixOS
+
+With flakes enabled:
+
+```bash
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+nix develop  # enters dev shell with all dependencies
+pip install -e .
+```
+
+Without flakes (using `shell.nix`):
+
+```bash
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+nix-shell  # enters dev shell
+pip install -e .
+```
+
+#### macOS
+
+```bash
+brew install pipx
+pipx ensurepath
+
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
+pipx install .
+```
+
+### Virtual Environment (Alternative)
+
+If you prefer not to use pipx:
+
+```bash
+git clone https://github.com/mhentschke/hass_companion.git
+cd hass_companion
 python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
 .venv/bin/pip install -e .
+.venv/bin/hass-companion --version
 ```
 
-For development:
+## Service Setup
+
+### systemd (Linux)
+
+A service unit file is provided at `contrib/hass-companion.service`.
+
 ```bash
-.venv/bin/pip install -e ".[dev]"
+# Copy config and env to a system location
+sudo mkdir -p /etc/hass-companion
+sudo cp config.yaml /etc/hass-companion/
+sudo cp .env /etc/hass-companion/
+
+# Install the service
+sudo cp contrib/hass-companion.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hass-companion
+```
+
+If installed via pipx, ensure the pipx bin directory is on PATH for the service user, or edit the service to use the full path:
+
+```ini
+ExecStart=/home/<user>/.local/bin/hass-companion --config /etc/hass-companion/config.yaml
+```
+
+If using a virtualenv:
+
+```ini
+ExecStart=/path/to/venv/bin/hass-companion --config /etc/hass-companion/config.yaml
+```
+
+Check status:
+
+```bash
+sudo systemctl status hass-companion
+journalctl -u hass-companion -f
+```
+
+### launchd (macOS)
+
+A plist file is provided at `contrib/com.hass-companion.plist`.
+
+```bash
+# Copy config to a system location
+mkdir -p /usr/local/etc/hass-companion
+cp config.yaml /usr/local/etc/hass-companion/
+
+# Create log directory
+mkdir -p /usr/local/var/log
+
+# Install the launch agent
+cp contrib/com.hass-companion.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.hass-companion.plist
+```
+
+If installed via pipx, update the plist to use the full path:
+
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/Users/<user>/.local/bin/hass-companion</string>
+    <string>--config</string>
+    <string>/usr/local/etc/hass-companion/config.yaml</string>
+</array>
+```
+
+Check logs:
+
+```bash
+tail -f /usr/local/var/log/hass-companion.log
+```
+
+To stop:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.hass-companion.plist
 ```
 
 ## Configuration
@@ -97,7 +283,7 @@ entities:
   selects:
     - name: Power Profile
       id: power_profile
-      device: my_peripheral  # match the key for the device to group this device into the custom devices
+      device: my_peripheral
       command_template: "powerprofilesctl set {}"
       state_map:
         Balanced: balanced
@@ -140,17 +326,6 @@ entities:
     sensors:
       temperatures: {}
       fans: {}
-```
-
-### 3. Run
-
-```bash
-.venv/bin/python hass-companion.py
-```
-
-Or with the launch script:
-```bash
-./hass-companion.sh start
 ```
 
 ## Configuration Reference
@@ -299,12 +474,24 @@ config.yaml + .env
 ## Development
 
 ```bash
-# Run tests
-.venv/bin/pytest tests/unit tests/integration -v
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run unit + integration tests
+pytest tests/unit tests/integration -v
+
+# Run with coverage
+pytest tests/unit tests/integration --cov
+
+# Lint
+ruff check .
+ruff format --check .
 
 # Run with debug logging
-LOG_LEVEL=DEBUG .venv/bin/python hass-companion.py
+hass-companion --log-level DEBUG
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup instructions.
 
 ## License
 
