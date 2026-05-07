@@ -20,12 +20,16 @@ class MQTTReconnectionManager:
 
     On reconnect, iterates all entities and calls republish() to re-send
     discovery configs and last known state.
+
+    Accepts either a dict (entity registry) or list of entities. When a dict
+    is passed, iterates .values() — this keeps the manager in sync with
+    registry mutations during hot-reload.
     """
 
     def __init__(
         self,
         mqtt_client: Any,
-        entities: list,
+        entities: Any,
         *,
         initial_backoff: float = DEFAULT_INITIAL_BACKOFF,
         max_backoff: float = DEFAULT_MAX_BACKOFF,
@@ -37,6 +41,12 @@ class MQTTReconnectionManager:
         self._backoff = initial_backoff
         self._shutdown = asyncio.Event()
         self._was_connected = True  # Assume we start connected
+
+    def _iter_entities(self):
+        """Iterate entities regardless of whether stored as dict or list."""
+        if isinstance(self._entities, dict):
+            return self._entities.values()
+        return self._entities
 
     async def run(self) -> None:
         """Monitor connection state, reconnect with exponential backoff on disconnect."""
@@ -93,8 +103,9 @@ class MQTTReconnectionManager:
 
     async def _republish_all(self) -> None:
         """Re-publish discovery and last known state for all entities."""
-        logger.debug("Republishing discovery and state for %d entities", len(self._entities))
-        for entity in self._entities:
+        entities = list(self._iter_entities())
+        logger.debug("Republishing discovery and state for %d entities", len(entities))
+        for entity in entities:
             if hasattr(entity, "republish"):
                 try:
                     entity.republish()

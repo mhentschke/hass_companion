@@ -12,6 +12,7 @@ from ha_mqtt_discoverable import Settings as HASettings
 
 from core.config import ConfigError, load_config
 from core.discovery import clean_discovery
+from core.entities.base import BaseEntity
 from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
 from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
@@ -127,13 +128,16 @@ def _resolve_device(entity_config, ha_device, ha_devices):
     return ha_device
 
 
-def _load_entities_via_factory(entity_type: str, entity_configs: list, mqtt_settings, ha_device, ha_devices) -> list:
-    """Create entities using the factory, passing Pydantic configs directly."""
-    created = []
+def _load_entities_via_factory(
+    entity_type: str, entity_configs: list, mqtt_settings, ha_device, ha_devices
+) -> dict[tuple[str, str], BaseEntity]:
+    """Create entities using the factory, returning a registry dict keyed by (type, id)."""
+    created: dict[tuple[str, str], BaseEntity] = {}
     for config in entity_configs:
         device = _resolve_device(config, ha_device, ha_devices)
         entity = factory_create_entity(entity_type, config, mqtt_settings, device)
-        created.append(entity)
+        entity_id = config.id or config.name
+        created[(entity_type, entity_id)] = entity
     return created
 
 
@@ -182,37 +186,51 @@ async def run_app(config_path: str) -> None:
     for device_id, device_config in app_config.devices.items():
         ha_devices[device_id] = HADeviceInfo(name=device_config.name, identifiers=device_id)
 
-    # Create entities via factory
-    entities: list = []
-    entities += _load_entities_via_factory("sensor", app_config.entities.sensors, mqtt_settings, ha_device, ha_devices)
-    entities += _load_entities_via_factory(
-        "binary_sensor", app_config.entities.binary_sensors, mqtt_settings, ha_device, ha_devices
+    # Create entities via factory into registry
+    entity_registry: dict[tuple[str, str], BaseEntity] = {}
+    entity_registry.update(
+        _load_entities_via_factory("sensor", app_config.entities.sensors, mqtt_settings, ha_device, ha_devices)
     )
-    entities += _load_entities_via_factory("switch", app_config.entities.switches, mqtt_settings, ha_device, ha_devices)
-    entities += _load_entities_via_factory("button", app_config.entities.buttons, mqtt_settings, ha_device, ha_devices)
-    entities += _load_entities_via_factory("select", app_config.entities.selects, mqtt_settings, ha_device, ha_devices)
+    entity_registry.update(
+        _load_entities_via_factory(
+            "binary_sensor", app_config.entities.binary_sensors, mqtt_settings, ha_device, ha_devices
+        )
+    )
+    entity_registry.update(
+        _load_entities_via_factory("switch", app_config.entities.switches, mqtt_settings, ha_device, ha_devices)
+    )
+    entity_registry.update(
+        _load_entities_via_factory("button", app_config.entities.buttons, mqtt_settings, ha_device, ha_devices)
+    )
+    entity_registry.update(
+        _load_entities_via_factory("select", app_config.entities.selects, mqtt_settings, ha_device, ha_devices)
+    )
 
     # Create system entities with sub-device support
     if app_config.entities.system:
-        entities += create_system_entities(
+        system_entities = create_system_entities(
             app_config.entities.system,
             mqtt_settings,
             ha_device,
             sub_devices=app_config.hass.sub_devices,
             device_name=app_config.hass.device_name,
         )
+        for entity in system_entities:
+            # Derive system entity ID from _base_id (CompositeEntity) or _system_id (SystemSensor)
+            entity_id = getattr(entity, "_base_id", None) or getattr(entity, "_system_id", "unknown")
+            entity_registry[("system", entity_id)] = entity
 
     # Shared shutdown event
     shutdown_event = asyncio.Event()
 
-    # Set up MQTT reconnection manager using the shared client
-    reconnection_manager = MQTTReconnectionManager(shared_client, entities)
+    # Set up MQTT reconnection manager using the shared client and registry
+    reconnection_manager = MQTTReconnectionManager(shared_client, entity_registry)
     logger.debug("MQTT reconnection manager initialized")
 
     def signal_handler():
         logger.info("Shutdown signal received")
         shutdown_event.set()
-        for entity in entities:
+        for entity in entity_registry.values():
             if hasattr(entity, "stop"):
                 entity.stop()
         reconnection_manager.stop()
@@ -223,12 +241,12 @@ async def run_app(config_path: str) -> None:
         loop.add_signal_handler(sig, signal_handler)
 
     # Launch all entity run() coroutines as tasks
-    tasks = [asyncio.create_task(entity.run()) for entity in entities if hasattr(entity, "run")]
+    tasks = [asyncio.create_task(entity.run()) for entity in entity_registry.values() if hasattr(entity, "run")]
 
     # Add reconnection manager as a gathered task
     tasks.append(asyncio.create_task(reconnection_manager.run()))
 
-    logger.info("Started %d entities", len(entities))
+    logger.info("Started %d entities", len(entity_registry))
 
     # Wait for shutdown signal
     await shutdown_event.wait()
