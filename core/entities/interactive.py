@@ -43,6 +43,9 @@ class InteractiveEntity(Entity):
     async def run(self) -> None:
         """Concurrently handle commands and poll feedback."""
         self._loop = asyncio.get_running_loop()
+        # If no feedback fetcher, publish available immediately (optimistic mode)
+        if not self._feedback_fetcher and hasattr(self._ha_entity, 'set_availability'):
+            self._ha_entity.set_availability(True)
         tasks = [self._handle_commands()]
         if self._feedback_fetcher:
             tasks.append(self._feedback_fetcher.run())

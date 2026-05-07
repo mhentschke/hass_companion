@@ -3,6 +3,7 @@ import signal
 import os
 import logging
 
+import paho.mqtt.client as mqtt
 from ha_mqtt_discoverable import Settings as HASettings
 from ha_mqtt_discoverable import DeviceInfo as HADeviceInfo
 from dotenv import load_dotenv
@@ -47,69 +48,39 @@ def load_entities_via_factory(entity_type: str, entity_configs: list, mqtt_setti
     return created
 
 
-def _disconnect_mqtt_clients(entities: list) -> None:
-    """Disconnect all MQTT clients from ha-mqtt-discoverable entities.
+def create_shared_mqtt_client(app_config) -> mqtt.Client:
+    """Create a single shared paho-mqtt client for all entities.
 
-    Each HA entity created by ha-mqtt-discoverable has an internal paho-mqtt
-    client with loop_start() running. We must stop these to allow clean exit.
+    Connects to the broker and starts the network loop thread.
+    All ha-mqtt-discoverable entities will reuse this client instead of
+    creating their own connections.
     """
-    seen_clients = set()
-    for entity in entities:
-        # Single entities (Entity subclasses)
-        ha_entity = getattr(entity, '_ha_entity', None)
-        if ha_entity:
-            client = getattr(ha_entity, 'mqtt_client', None)
-            if client and id(client) not in seen_clients:
-                seen_clients.add(id(client))
-                try:
-                    client.disconnect()
-                    client.loop_stop()
-                except Exception:
-                    pass
-        # Composite entities (SystemMultiSensor) have multiple HA entities
-        ha_entities = getattr(entity, '_ha_entities', None)
-        if ha_entities and isinstance(ha_entities, dict):
-            for ha_ent in ha_entities.values():
-                client = getattr(ha_ent, 'mqtt_client', None)
-                if client and id(client) not in seen_clients:
-                    seen_clients.add(id(client))
-                    try:
-                        client.disconnect()
-                        client.loop_stop()
-                    except Exception:
-                        pass
-
-
-def _get_mqtt_client(entities: list):
-    """Extract a paho-mqtt client from the first available entity.
-
-    Used by the reconnection manager to monitor connection state.
-    Returns None if no MQTT client is found.
-    """
-    for entity in entities:
-        ha_entity = getattr(entity, '_ha_entity', None)
-        if ha_entity:
-            client = getattr(ha_entity, 'mqtt_client', None)
-            if client:
-                return client
-        ha_entities = getattr(entity, '_ha_entities', None)
-        if ha_entities and isinstance(ha_entities, dict):
-            for ha_ent in ha_entities.values():
-                client = getattr(ha_ent, 'mqtt_client', None)
-                if client:
-                    return client
-    return None
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    if app_config.mqtt.username:
+        client.username_pw_set(app_config.mqtt.username, app_config.mqtt.password)
+    client.connect(app_config.mqtt.host, app_config.mqtt.port)
+    client.loop_start()
+    logger.info(
+        "Shared MQTT client connected to %s:%d",
+        app_config.mqtt.host,
+        app_config.mqtt.port,
+    )
+    return client
 
 
 async def main():
     """Async entry point — create entities and run them concurrently."""
     app_config = load_config('config.yaml')
 
+    # Single shared MQTT client for all entities
+    shared_client = create_shared_mqtt_client(app_config)
+
     mqtt_settings = HASettings.MQTT(
         host=app_config.mqtt.host,
         port=app_config.mqtt.port,
         username=app_config.mqtt.username,
         password=app_config.mqtt.password,
+        client=shared_client,
     )
 
     ha_device = HADeviceInfo(
@@ -137,14 +108,9 @@ async def main():
     # Shared shutdown event
     shutdown_event = asyncio.Event()
 
-    # Set up MQTT reconnection manager
-    reconnection_manager = None
-    mqtt_client = _get_mqtt_client(entities)
-    if mqtt_client:
-        reconnection_manager = MQTTReconnectionManager(mqtt_client, entities)
-        logger.info("MQTT reconnection manager initialized")
-    else:
-        logger.warning("No MQTT client found — reconnection manager disabled")
+    # Set up MQTT reconnection manager using the shared client
+    reconnection_manager = MQTTReconnectionManager(shared_client, entities)
+    logger.info("MQTT reconnection manager initialized")
 
     def signal_handler():
         logger.info("Shutdown signal received")
@@ -152,8 +118,7 @@ async def main():
         for entity in entities:
             if hasattr(entity, 'stop'):
                 entity.stop()
-        if reconnection_manager:
-            reconnection_manager.stop()
+        reconnection_manager.stop()
 
     # Register signal handlers via the event loop
     loop = asyncio.get_running_loop()
@@ -164,8 +129,7 @@ async def main():
     tasks = [asyncio.create_task(entity.run()) for entity in entities if hasattr(entity, 'run')]
 
     # Add reconnection manager as a gathered task
-    if reconnection_manager:
-        tasks.append(asyncio.create_task(reconnection_manager.run()))
+    tasks.append(asyncio.create_task(reconnection_manager.run()))
 
     logger.info("Started %d entities", len(entities))
 
@@ -178,12 +142,12 @@ async def main():
         for task in pending:
             logger.warning("Force-cancelling task: %s", task.get_name())
             task.cancel()
-        # Await cancelled tasks to suppress warnings
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    # Disconnect all MQTT clients to allow clean process exit
-    _disconnect_mqtt_clients(entities)
+    # Disconnect the shared MQTT client
+    shared_client.disconnect()
+    shared_client.loop_stop()
 
     logger.info("Shutdown complete")
 

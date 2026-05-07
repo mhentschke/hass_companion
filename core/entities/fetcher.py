@@ -43,7 +43,7 @@ class StateFetcher:
         self._exit = asyncio.Event()
         self._failure_count = 0
         self._failure_threshold = 3
-        self._available = True
+        self._available = False  # Start as unavailable; first success publishes online
 
     async def _fetch_value(self) -> Any:
         """Subclasses implement value retrieval. Returns raw value."""
