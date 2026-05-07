@@ -1,0 +1,32 @@
+# Hass Companion — Home Assistant MQTT Companion
+#
+# Installation (pipx):
+#   sudo mkdir -p /etc/hass-companion
+#   sudo cp config.yaml /etc/hass-companion/
+#   sudo cp .env /etc/hass-companion/
+#   sudo cp contrib/hass-companion.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hass-companion
+#
+# If installed via pipx, ensure the pipx bin directory is on PATH for the
+# service user, or use the full path:
+#   ExecStart=/home/<user>/.local/bin/hass-companion --config /etc/hass-companion/config.yaml
+#
+# If installed in a virtualenv instead of pipx:
+#   ExecStart=/path/to/venv/bin/hass-companion --config /etc/hass-companion/config.yaml
+
+[Unit]
+Description=Hass Companion — Home Assistant MQTT Companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/etc/hass-companion
+EnvironmentFile=/etc/hass-companion/.env
+ExecStart=hass-companion --config /etc/hass-companion/config.yaml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
