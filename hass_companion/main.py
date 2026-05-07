@@ -17,6 +17,7 @@ from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
 from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
 from core.mqtt import MQTTReconnectionManager
+from core.reload import ReloadManager
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +157,12 @@ def create_shared_mqtt_client(app_config) -> mqtt.Client:
     return client
 
 
-async def run_app(config_path: str) -> None:
-    """Async entry point — create entities and run them concurrently."""
+async def run_app(config_path: str, watch_config: bool = False) -> None:
+    """Async entry point — create entities and run them concurrently.
+
+    Supports hot-reload via SIGHUP signal. When reload is triggered,
+    the ReloadManager diffs configs and applies changes without restart.
+    """
     load_dotenv()
 
     app_config = load_config(config_path)
@@ -220,14 +225,25 @@ async def run_app(config_path: str) -> None:
             entity_id = getattr(entity, "_base_id", None) or getattr(entity, "_system_id", "unknown")
             entity_registry[("system", entity_id)] = entity
 
-    # Shared shutdown event
+    # Shared events
     shutdown_event = asyncio.Event()
+    reload_event = asyncio.Event()
 
     # Set up MQTT reconnection manager using the shared client and registry
     reconnection_manager = MQTTReconnectionManager(shared_client, entity_registry)
     logger.debug("MQTT reconnection manager initialized")
 
-    def signal_handler():
+    # Set up ReloadManager
+    reload_manager = ReloadManager(
+        config_path=config_path,
+        mqtt_settings=mqtt_settings,
+        ha_device=ha_device,
+        ha_devices=ha_devices,
+        sub_devices=app_config.hass.sub_devices,
+        device_name=app_config.hass.device_name,
+    )
+
+    def shutdown_handler():
         logger.info("Shutdown signal received")
         shutdown_event.set()
         for entity in entity_registry.values():
@@ -235,25 +251,92 @@ async def run_app(config_path: str) -> None:
                 entity.stop()
         reconnection_manager.stop()
 
+    def sighup_handler():
+        logger.info("SIGHUP received — scheduling config reload")
+        reload_event.set()
+
     # Register signal handlers via the event loop
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
+        loop.add_signal_handler(sig, shutdown_handler)
+    loop.add_signal_handler(signal.SIGHUP, sighup_handler)
 
     # Launch all entity run() coroutines as tasks
-    tasks = [asyncio.create_task(entity.run()) for entity in entity_registry.values() if hasattr(entity, "run")]
+    entity_tasks: list[asyncio.Task] = [
+        asyncio.create_task(entity.run()) for entity in entity_registry.values() if hasattr(entity, "run")
+    ]
 
     # Add reconnection manager as a gathered task
-    tasks.append(asyncio.create_task(reconnection_manager.run()))
+    reconnection_task = asyncio.create_task(reconnection_manager.run())
 
     logger.info("Started %d entities", len(entity_registry))
 
-    # Wait for shutdown signal
-    await shutdown_event.wait()
+    # Main loop: wait for shutdown or reload events
+    while not shutdown_event.is_set():
+        # Wait for either shutdown or reload
+        reload_wait = asyncio.create_task(reload_event.wait())
+        shutdown_wait = asyncio.create_task(shutdown_event.wait())
 
-    # Give tasks time to finish gracefully (5s timeout)
-    if tasks:
-        done, pending = await asyncio.wait(tasks, timeout=5.0)
+        done, pending = await asyncio.wait(
+            [reload_wait, shutdown_wait],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cancel the pending waiter
+        for task in pending:
+            task.cancel()
+
+        if shutdown_event.is_set():
+            break
+
+        if reload_event.is_set():
+            reload_event.clear()
+            result = await reload_manager.reload(entity_registry, app_config)
+
+            if result.success:
+                # Cancel old entity tasks
+                for task in entity_tasks:
+                    task.cancel()
+                await asyncio.gather(*entity_tasks, return_exceptions=True)
+
+                # Update registry and config
+                entity_registry.clear()
+                entity_registry.update(result.new_entities)
+                app_config = result.new_config
+
+                # Update reconnection manager's entity reference
+                reconnection_manager._entities = entity_registry
+
+                # Start new entity tasks
+                entity_tasks = [
+                    asyncio.create_task(entity.run())
+                    for entity in entity_registry.values()
+                    if hasattr(entity, "run")
+                ]
+
+                logger.info(
+                    "Reload complete: %d added, %d removed, %d updated",
+                    len(result.added),
+                    len(result.removed),
+                    len(result.updated),
+                )
+                for name in result.added:
+                    logger.debug("  Added: %s", name)
+                for name in result.removed:
+                    logger.debug("  Removed: %s", name)
+                for name in result.updated:
+                    logger.debug("  Updated: %s", name)
+            else:
+                logger.warning("Reload failed: %s", result.error)
+
+    # Shutdown: stop all entity tasks
+    for task in entity_tasks:
+        task.cancel()
+    reconnection_task.cancel()
+
+    all_tasks = entity_tasks + [reconnection_task]
+    if all_tasks:
+        done, pending = await asyncio.wait(all_tasks, timeout=5.0)
         for task in pending:
             logger.warning("Force-cancelling task: %s", task.get_name())
             task.cancel()

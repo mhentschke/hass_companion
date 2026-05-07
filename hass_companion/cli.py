@@ -70,7 +70,7 @@ def main() -> None:
         sys.exit(dry_run(args.config))
 
     try:
-        asyncio.run(run_app(args.config))
+        asyncio.run(run_app(args.config, watch_config=args.watch_config))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
