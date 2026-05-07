@@ -16,6 +16,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import time
 
 import pytest
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.smoke
 SMOKE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SMOKE_DIR, "..", ".."))
 APP_SCRIPT = os.path.join(PROJECT_ROOT, "hass-companion.py")
-PYTHON = os.path.join(PROJECT_ROOT, ".venv", "bin", "python")
+PYTHON = sys.executable
 
 
 def _start_app(port: int) -> subprocess.Popen:
