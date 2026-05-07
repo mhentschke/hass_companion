@@ -13,6 +13,7 @@ from ha_mqtt_discoverable import Settings as HASettings
 from core.config import ConfigError, load_config
 from core.discovery import clean_discovery
 from core.entities.base import BaseEntity
+from core.entities.config_status import ConfigStatusSensor
 from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
 from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
@@ -226,6 +227,11 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
             entity_id = getattr(entity, "_base_id", None) or getattr(entity, "_system_id", "unknown")
             entity_registry[("system", entity_id)] = entity
 
+    # Create built-in ConfigStatusSensor (excluded from reconciliation)
+    config_status_sensor = ConfigStatusSensor(
+        mqtt_settings, ha_device, device_id=app_config.hass.device_id
+    )
+
     # Shared events
     shutdown_event = asyncio.Event()
     reload_event = asyncio.Event()
@@ -344,8 +350,15 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
                     logger.debug("  Removed: %s", name)
                 for name in result.updated:
                     logger.debug("  Updated: %s", name)
+
+                config_status_sensor.set_valid(
+                    added=len(result.added),
+                    removed=len(result.removed),
+                    updated=len(result.updated),
+                )
             else:
                 logger.warning("Reload failed: %s", result.error)
+                config_status_sensor.set_error(result.error)
 
     # Shutdown: stop all entity tasks
     for task in entity_tasks:
