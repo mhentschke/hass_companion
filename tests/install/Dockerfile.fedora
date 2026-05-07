@@ -1,0 +1,18 @@
+FROM fedora:40
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+RUN dnf install -y python3-pip pipx && \
+    dnf clean all
+
+WORKDIR /app
+COPY . .
+
+RUN pipx install .
+
+# Verify CLI entry point works
+RUN hass-companion --version
+
+# Validate with an inline minimal config
+RUN printf 'mqtt:\n  host: localhost\n  port: 1883\nhass:\n  device_name: Test\n  device_id: test\n' > /tmp/test-config.yaml && \
+    hass-companion --validate --config /tmp/test-config.yaml

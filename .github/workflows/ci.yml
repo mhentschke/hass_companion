@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit tests/integration -v --cov --cov-report=term-missing
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit tests/integration -v
+      - name: Verify pipx install
+        run: |
+          pip install pipx
+          pipx install .
+          hass-companion --version
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: docker compose -f tests/smoke/docker-compose.yml up -d --wait
+      - run: |
+          export TEST_MQTT_PORT=$(docker compose -f tests/smoke/docker-compose.yml port mosquitto 1883 | cut -d: -f2)
+          pytest tests/smoke/ -v
+      - run: docker compose -f tests/smoke/docker-compose.yml down
+        if: always()
+
+  install-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu, fedora, arch, nix]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify install (${{ matrix.distro }})
+        run: docker build -f tests/install/Dockerfile.${{ matrix.distro }} .

@@ -13,18 +13,25 @@ help() {
     exit 1
 }
 
+run() {
+    
+    source .venv/bin/activate
+    # get the path to the virtual environment's python interpreter
+    python_path=$(which python3)
+    # get the path to the script
+    script_path=$(pwd)/hass-companion.py
+    echo "Starting with command: $python_path -u $script_path"
+    $python_path $script_path
+
+}
+
 start() {
     # ask if should stop the service
     read -p "This will stop the service and run as standalone. To restart the service, you can run ./hass-companion.sh autostart. Are you sure you want to stop the service? (y/n): " stop_service
     if [ "$stop_service" == "y" ]; then
         echo "Stopping service..."
         sudo systemctl stop hass-companion.service
-        # get the path to the virtual environment's python interpreter
-        python_path=$(which python3)
-        # get the path to the script
-        script_path=$(pwd)/hass-companion.py
-        echo "Starting standalone with command: $python_path $script_path"
-        $python_path $script_path
+        run
     else
         echo Operation aborted by user!
     fi
@@ -43,6 +50,8 @@ autostart() {
         script_path=$(pwd)/hass-companion.py
         # get the path to the virtual environment's python interpreter
         python_path=$(which python3)
+        # get the environment variables file path
+        env_path=$(pwd)/.env
         # create a systemd service file
         echo "Setting up autostart for user $current_user at /etc/systemd/system/hass-companion.service"
         file_contents="[Unit]
@@ -51,8 +60,9 @@ autostart() {
     [Service]
     User=$current_user
     WorkingDirectory=$(pwd)
-    ExecStart=$python_path $script_path
-    Restart=always"
+    ExecStart=$python_path -u $script_path
+    Restart=always
+    EnvironmentFile=$env_path"
         echo Creating Service File:
         echo "$file_contents"
         echo "--- End of contents ---"
@@ -113,6 +123,7 @@ install() {
 uninstall() {
     remove_autostart
     # remove venv
+    deactivate
     rm -r .venv
 
 }
@@ -125,6 +136,9 @@ fi
 
 # Get command from command line. Options are install, uninstall, autostart, remove-autostart and help
 command=$1
+# Change to root directory
+cd 'dirname "$0"'
+
 # Check if command is valid
 case $command in
     start)

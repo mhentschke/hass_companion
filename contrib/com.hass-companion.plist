@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hass Companion — Home Assistant MQTT Companion (macOS launchd)
+
+  Installation:
+    mkdir -p /usr/local/etc/hass-companion
+    cp config.yaml /usr/local/etc/hass-companion/
+    cp contrib/com.hass-companion.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.hass-companion.plist
+
+  If installed via pipx, ensure the full path is used in ProgramArguments:
+    Replace <string>hass-companion</string> with the full path, e.g.:
+    <string>/Users/<user>/.local/bin/hass-companion</string>
+
+  Logs:
+    tail -f /usr/local/var/log/hass-companion.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hass-companion</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>hass-companion</string>
+        <string>--config</string>
+        <string>/usr/local/etc/hass-companion/config.yaml</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/hass-companion.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/hass-companion.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict/>
+</dict>
+</plist>

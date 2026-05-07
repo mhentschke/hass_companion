@@ -1,4 +1,9 @@
 .env*
 config.yaml
-.venv
+!tests/smoke/config.yaml
+.venv/
 config *.yaml
+__pycache__/
+*.pyc
+*.egg-info/
+.kiro/
