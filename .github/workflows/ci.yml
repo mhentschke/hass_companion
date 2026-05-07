@@ -37,6 +37,11 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: pytest tests/unit tests/integration -v
+      - name: Verify pipx install
+        run: |
+          pip install pipx
+          pipx install .
+          hass-companion --version
 
   smoke:
     runs-on: ubuntu-latest
@@ -52,3 +57,14 @@ jobs:
           pytest tests/smoke/ -v
       - run: docker compose -f tests/smoke/docker-compose.yml down
         if: always()
+
+  install-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu, fedora, arch, nix]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify install (${{ matrix.distro }})
+        run: docker build -f tests/install/Dockerfile.${{ matrix.distro }} .

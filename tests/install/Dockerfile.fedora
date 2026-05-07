@@ -1,0 +1,15 @@
+FROM fedora:40
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+RUN dnf install -y python3-pip pipx && \
+    dnf clean all
+
+WORKDIR /app
+COPY . .
+
+RUN pipx install .
+
+# Verify CLI entry point works
+RUN hass-companion --version
+RUN hass-companion --validate --config tests/install/config.yaml
