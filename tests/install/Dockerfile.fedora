@@ -12,4 +12,4 @@ RUN pipx install .
 
 # Verify CLI entry point works
 RUN hass-companion --version
-RUN hass-companion --validate --config tests/install/config.yaml
+RUN hass-companion --validate --config /app/tests/install/config.yaml

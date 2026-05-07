@@ -12,5 +12,5 @@ RUN nix-shell -p python312 python312Packages.pip python312Packages.setuptools --
     python3 -m venv /tmp/venv && \
     /tmp/venv/bin/pip install . && \
     /tmp/venv/bin/hass-companion --version && \
-    /tmp/venv/bin/hass-companion --validate --config tests/install/config.yaml \
+    /tmp/venv/bin/hass-companion --validate --config /app/tests/install/config.yaml \
 "
