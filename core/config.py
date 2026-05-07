@@ -40,6 +40,7 @@ DEFAULT_SYSTEM_PROCESS_INTERVAL = 10.0
 
 # --- MQTT & Hass ---
 
+
 class MQTTConfig(BaseModel):
     host: str = "localhost"
     port: int = Field(default=1883, ge=1, le=65535)
@@ -60,6 +61,7 @@ class DeviceConfig(BaseModel):
 
 # --- Parsers ---
 
+
 class ParserConfig(BaseModel):
     type: str
     regex: Optional[str] = None
@@ -78,6 +80,7 @@ class ParserConfig(BaseModel):
 
 
 # --- Entity configs ---
+
 
 class SensorConfig(BaseModel):
     name: Optional[str] = None
@@ -106,9 +109,7 @@ class SensorConfig(BaseModel):
         if self.polling_interval is not None:
             return self.polling_interval
         if self.polling_rate is not None:
-            logger.warning(
-                "'polling_rate' is deprecated, use 'polling_interval' (seconds)"
-            )
+            logger.warning("'polling_rate' is deprecated, use 'polling_interval' (seconds)")
             return 1.0 / self.polling_rate
         return default
 
@@ -150,6 +151,7 @@ class SelectConfig(BaseModel):
 
 
 # --- System entity configs ---
+
 
 class SystemCpuPercentConfig(BaseModel):
     total: bool = True
@@ -287,6 +289,7 @@ class SystemConfig(BaseModel):
 
 # --- Top-level config ---
 
+
 class EntitiesConfig(BaseModel):
     sensors: list[SensorConfig] = []
     binary_sensors: list[BinarySensorConfig] = []
@@ -311,9 +314,11 @@ _tag_matcher = re.compile(r"[^$]*\${([^}^{]+)}.*")
 
 def _path_constructor(_loader: Any, node: Any) -> str:
     """Resolve ${VAR} and ${VAR:default} patterns in YAML string values."""
+
     def replace_fn(match: re.Match) -> str:
         envparts = f"{match.group(1)}:".split(":")
         return os.environ.get(envparts[0], envparts[1])
+
     return _var_matcher.sub(replace_fn, node.value)
 
 
@@ -322,6 +327,7 @@ yaml.add_constructor("!envvar", _path_constructor, yaml.SafeLoader)
 
 
 # --- Config loading ---
+
 
 def load_config(filepath: str) -> AppConfig:
     """Load YAML config, resolve env vars, and validate with Pydantic.

@@ -7,10 +7,21 @@ that will be implemented in Task 4. They will fail until core/config.py exists.
 import pytest
 from pydantic import ValidationError
 
-from core.config import AppConfig, MQTTConfig, ParserConfig, SensorConfig
-
+from core.config import (
+    AppConfig,
+    DNSHostConfig,
+    MQTTConfig,
+    NetworkConfig,
+    NetworkIOConfig,
+    NetworkIOFilters,
+    ParserConfig,
+    PingHostConfig,
+    ProcessConfig,
+    SensorConfig,
+)
 
 # --- Valid configs ---
+
 
 class TestValidConfigs:
     def test_minimal_config_passes(self):
@@ -44,6 +55,7 @@ class TestValidConfigs:
 
 
 # --- Invalid configs ---
+
 
 class TestInvalidConfigs:
     def test_missing_mqtt_host_uses_default(self):
@@ -96,6 +108,7 @@ class TestInvalidConfigs:
 
 # --- Polling rate conversion ---
 
+
 class TestPollingRateConversion:
     def test_polling_interval_takes_precedence(self):
         """When polling_interval is set, it's used directly."""
@@ -114,15 +127,6 @@ class TestPollingRateConversion:
 
 
 # --- Network and Process config models ---
-
-from core.config import (
-    DNSHostConfig,
-    NetworkConfig,
-    NetworkIOConfig,
-    NetworkIOFilters,
-    PingHostConfig,
-    ProcessConfig,
-)
 
 
 class TestNetworkConfig:

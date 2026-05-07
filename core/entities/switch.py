@@ -32,6 +32,8 @@ class Switch(InteractiveEntity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Switch as HASwitch,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SwitchInfo as HASwitchInfo,
         )
 
@@ -68,9 +70,7 @@ class Switch(InteractiveEntity):
 
     async def _execute_action(self, payload: str) -> None:
         """Execute the on or off command asynchronously."""
-        command = (
-            self._config.command_on if payload == "on" else self._config.command_off
-        )
+        command = self._config.command_on if payload == "on" else self._config.command_off
         shell = self._config.shell
         timeout = self._config.command_timeout
 

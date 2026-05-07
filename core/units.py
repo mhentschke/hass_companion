@@ -4,7 +4,6 @@ Used by SystemMultiSensor as a fallback when explicit units aren't provided.
 Handles flattened keys like "sda:read_bytes" by resolving the suffix part.
 """
 
-
 # Suffix → unit mapping (checked in order, first match wins)
 _SUFFIX_RULES: list[tuple[str, str]] = [
     # Percentages

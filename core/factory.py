@@ -47,7 +47,6 @@ def create_entity(
     cls = _ENTITY_REGISTRY.get(entity_type)
     if cls is None:
         raise ValueError(
-            f"Unknown entity type: '{entity_type}'. "
-            f"Valid types: {', '.join(sorted(_ENTITY_REGISTRY.keys()))}"
+            f"Unknown entity type: '{entity_type}'. Valid types: {', '.join(sorted(_ENTITY_REGISTRY.keys()))}"
         )
     return cls(config, mqtt_settings, device)

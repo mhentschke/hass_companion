@@ -62,13 +62,11 @@ class TestCLIValidateMode:
 
     def test_validate_valid_config(self, tmp_path):
         config = tmp_path / "config.yaml"
-        config.write_text(
-            "mqtt:\n  host: localhost\n  port: 1883\n"
-            "hass:\n  device_name: Test\n  device_id: test\n"
-        )
+        config.write_text("mqtt:\n  host: localhost\n  port: 1883\nhass:\n  device_name: Test\n  device_id: test\n")
         result = subprocess.run(
             [sys.executable, "-m", "hass_companion", "--validate", "--config", str(config)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "Configuration valid" in result.stdout
@@ -78,14 +76,16 @@ class TestCLIValidateMode:
         config.write_text("mqtt:\n  port: abc\n")
         result = subprocess.run(
             [sys.executable, "-m", "hass_companion", "--validate", "--config", str(config)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 1
 
     def test_validate_missing_config(self):
         result = subprocess.run(
             [sys.executable, "-m", "hass_companion", "--validate", "--config", "/nonexistent.yaml"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 1
         assert "not found" in result.stderr
@@ -103,7 +103,8 @@ class TestCLIDryRunMode:
         )
         result = subprocess.run(
             [sys.executable, "-m", "hass_companion", "--dry-run", "--config", str(config)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "[sensor] Echo" in result.stdout

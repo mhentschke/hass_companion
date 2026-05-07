@@ -8,7 +8,6 @@ import pytest
 from core.config import PingHostConfig
 from core.network_sensors import PingSensor
 
-
 PING_SUCCESS_OUTPUT = """\
 PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
 64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=12.3 ms
@@ -29,9 +28,7 @@ PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
 def _make_mock_process(stdout_text: str, returncode: int = 0):
     """Create a mock async subprocess that returns given stdout."""
     mock_proc = AsyncMock()
-    mock_proc.communicate = AsyncMock(
-        return_value=(stdout_text.encode(), b"")
-    )
+    mock_proc.communicate = AsyncMock(return_value=(stdout_text.encode(), b""))
     mock_proc.returncode = returncode
     return mock_proc
 

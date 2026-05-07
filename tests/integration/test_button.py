@@ -1,9 +1,9 @@
 """Integration tests for Button entity with async command execution."""
 
 import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 
 from core.config import ButtonConfig
 from core.entities.button import Button
@@ -46,6 +46,7 @@ async def test_button_executes_command_on_press(mock_run_command):
 async def test_button_handles_timeout(mock_run_command):
     """Verify button handles command timeout gracefully."""
     from core.subprocess import CommandTimeout
+
     mock_run_command.side_effect = CommandTimeout("timed out")
     button, _ = _make_button(command="sleep 999")
 
@@ -63,6 +64,7 @@ async def test_button_handles_timeout(mock_run_command):
 async def test_button_handles_exception(mock_run_command):
     """Verify button handles command failure gracefully."""
     from core.subprocess import CommandFailed
+
     mock_run_command.side_effect = CommandFailed("Command not found")
     button, _ = _make_button(command="nonexistent_cmd")
 

@@ -1,12 +1,13 @@
 """Unit tests for psutil helper functions in core.psutil_bindings."""
 
 import re
+
 import pytest
 
-from core.psutil_bindings import dict_unit_convert, dict_round, flatten_dict, filter_dict
-
+from core.psutil_bindings import dict_round, dict_unit_convert, filter_dict, flatten_dict
 
 # --- dict_unit_convert ---
+
 
 class TestDictUnitConvert:
     def test_subset_of_keys_converted(self):
@@ -35,6 +36,7 @@ class TestDictUnitConvert:
 
 # --- dict_round ---
 
+
 class TestDictRound:
     def test_float_precision(self):
         d = {"temp": 3.14159, "humidity": 72.666}
@@ -56,6 +58,7 @@ class TestDictRound:
 
 
 # --- flatten_dict ---
+
 
 class TestFlattenDict:
     def test_nested_dict_flattened(self):
@@ -79,6 +82,7 @@ class TestFlattenDict:
 
 
 # --- filter_dict ---
+
 
 class TestFilterDict:
     def test_include_patterns_match(self):
@@ -104,15 +108,27 @@ class TestFilterDict:
 
 # --- net_io_counters_total ---
 
+
 class TestNetIOCountersTotal:
     def test_returns_expected_keys(self):
         from core.psutil_bindings import net_io_counters_total
+
         result = net_io_counters_total()
-        expected_keys = {"bytes_sent", "bytes_recv", "packets_sent", "packets_recv", "errin", "errout", "dropin", "dropout"}
+        expected_keys = {
+            "bytes_sent",
+            "bytes_recv",
+            "packets_sent",
+            "packets_recv",
+            "errin",
+            "errout",
+            "dropin",
+            "dropout",
+        }
         assert expected_keys == set(result.keys())
 
     def test_values_are_numeric(self):
         from core.psutil_bindings import net_io_counters_total
+
         result = net_io_counters_total()
         for v in result.values():
             assert isinstance(v, (int, float))
@@ -120,9 +136,11 @@ class TestNetIOCountersTotal:
 
 # --- net_io_counters_per_nic ---
 
+
 class TestNetIOCountersPerNic:
     def test_returns_flattened_keys(self):
         from core.psutil_bindings import net_io_counters_per_nic
+
         result = net_io_counters_per_nic()
         # Should have nic:metric format keys
         assert len(result) > 0
@@ -130,8 +148,10 @@ class TestNetIOCountersPerNic:
             assert ":" in key
 
     def test_exclude_filters_nics(self):
-        from core.psutil_bindings import net_io_counters_per_nic
         import psutil
+
+        from core.psutil_bindings import net_io_counters_per_nic
+
         # Get all NIC names
         all_nics = list(psutil.net_io_counters(pernic=True).keys())
         if len(all_nics) < 2:
@@ -144,8 +164,10 @@ class TestNetIOCountersPerNic:
             assert not key.startswith(f"{target}:")
 
     def test_include_filters_nics(self):
-        from core.psutil_bindings import net_io_counters_per_nic
         import psutil
+
+        from core.psutil_bindings import net_io_counters_per_nic
+
         all_nics = list(psutil.net_io_counters(pernic=True).keys())
         if len(all_nics) < 2:
             pytest.skip("Need at least 2 NICs to test filtering")
@@ -159,9 +181,11 @@ class TestNetIOCountersPerNic:
 
 # --- Network IO rate calculation with RateCalculator ---
 
+
 class TestNetIORateCalculation:
     def test_rate_calculator_with_net_io_counters(self):
         from core.rate import RateCalculator
+
         rc = RateCalculator()
         counters1 = {"bytes_sent": 100.0, "bytes_recv": 200.0, "packets_sent": 10.0, "packets_recv": 20.0}
         # First call returns zeros
@@ -170,6 +194,7 @@ class TestNetIORateCalculation:
 
         # Second call should produce rates > 0 (time has elapsed)
         import time
+
         time.sleep(0.05)
         counters2 = {"bytes_sent": 200.0, "bytes_recv": 400.0, "packets_sent": 20.0, "packets_recv": 40.0}
         result = rc.update(counters2)
@@ -181,15 +206,17 @@ class TestNetIORateCalculation:
 
 # --- ProcessMonitor ---
 
+
 class TestProcessMonitor:
     def test_get_stats_process_exists(self):
         """ProcessMonitor returns stats when a matching process is found."""
-        from unittest.mock import patch, Mock
+        from unittest.mock import Mock, patch
+
         from core.psutil_bindings import ProcessMonitor
 
         mock_proc = Mock()
-        mock_proc.info = {'pid': 1234, 'name': 'python3'}
-        mock_proc.status.return_value = 'running'
+        mock_proc.info = {"pid": 1234, "name": "python3"}
+        mock_proc.status.return_value = "running"
         mock_proc.cpu_percent.return_value = 5.5
         mock_proc.memory_percent.return_value = 2.3456
         mem_info = Mock()
@@ -199,7 +226,7 @@ class TestProcessMonitor:
         mock_proc.oneshot.return_value.__enter__ = Mock(return_value=None)
         mock_proc.oneshot.return_value.__exit__ = Mock(return_value=False)
 
-        with patch('psutil.process_iter', return_value=[mock_proc]):
+        with patch("psutil.process_iter", return_value=[mock_proc]):
             monitor = ProcessMonitor("python.*")
             stats = monitor.get_stats()
 
@@ -212,9 +239,10 @@ class TestProcessMonitor:
     def test_get_stats_process_not_found(self):
         """ProcessMonitor returns 'Not Running' when no process matches."""
         from unittest.mock import patch
+
         from core.psutil_bindings import ProcessMonitor
 
-        with patch('psutil.process_iter', return_value=[]):
+        with patch("psutil.process_iter", return_value=[]):
             monitor = ProcessMonitor("nonexistent_app")
             stats = monitor.get_stats()
 
@@ -226,13 +254,15 @@ class TestProcessMonitor:
 
     def test_get_stats_nosuchprocess_clears_cache(self):
         """ProcessMonitor handles NoSuchProcess by clearing cache and returning Not Running."""
-        from unittest.mock import patch, Mock, PropertyMock
+        from unittest.mock import Mock, patch
+
         import psutil as real_psutil
+
         from core.psutil_bindings import ProcessMonitor
 
         mock_proc = Mock()
-        mock_proc.info = {'pid': 1234, 'name': 'myapp'}
-        mock_proc.status.return_value = 'running'
+        mock_proc.info = {"pid": 1234, "name": "myapp"}
+        mock_proc.status.return_value = "running"
         mock_proc.cpu_percent.return_value = 10.0
         mock_proc.memory_percent.return_value = 5.0
         mem_info = Mock()
@@ -242,16 +272,14 @@ class TestProcessMonitor:
         mock_proc.oneshot.return_value.__enter__ = Mock(return_value=None)
         mock_proc.oneshot.return_value.__exit__ = Mock(return_value=False)
 
-        with patch('psutil.process_iter', return_value=[mock_proc]):
+        with patch("psutil.process_iter", return_value=[mock_proc]):
             monitor = ProcessMonitor("myapp")
             # First call succeeds and caches the process
             stats = monitor.get_stats()
             assert stats["status"] == "Running"
 
         # Now simulate NoSuchProcess on next call (process died)
-        mock_proc.oneshot.return_value.__enter__ = Mock(
-            side_effect=real_psutil.NoSuchProcess(1234)
-        )
+        mock_proc.oneshot.return_value.__enter__ = Mock(side_effect=real_psutil.NoSuchProcess(1234))
 
         stats = monitor.get_stats()
         assert stats["status"] == "Not Running"

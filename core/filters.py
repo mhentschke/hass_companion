@@ -54,6 +54,7 @@ class EntityFilter:
 
 # --- Smart defaults ---
 
+
 def default_disk_usage_filter() -> EntityFilter:
     """Skip virtual filesystems, NixOS bind mounts, and snap mounts.
 

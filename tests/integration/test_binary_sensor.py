@@ -1,9 +1,9 @@
 """Integration tests for CommandBinarySensor with mocked HA entity."""
 
 import asyncio
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from core.config import BinarySensorConfig
 from core.entities.binary_sensor import CommandBinarySensor

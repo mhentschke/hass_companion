@@ -47,7 +47,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    from hass_companion.main import setup_logging, run_app, validate_config, dry_run
+    from hass_companion.main import dry_run, run_app, setup_logging, validate_config
 
     setup_logging(args.log_level)
 

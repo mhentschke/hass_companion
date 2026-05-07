@@ -1,6 +1,6 @@
-import subprocess
-import re
 import logging
+import re
+import subprocess
 
 from core.platform import current_platform
 
@@ -32,6 +32,7 @@ def parse_ping(result):
     ping_packet_loss = float(ping_packet_loss_regex.search(result[-3]).group(1))
     result_dict["packet_loss"] = ping_packet_loss
     return result_dict
+
 
 if __name__ == "__main__":
     print(ping("8.8.8.8"))

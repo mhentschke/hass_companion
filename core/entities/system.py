@@ -18,18 +18,17 @@ from core.config import (
     DEFAULT_SYSTEM_FANS_INTERVAL,
     DEFAULT_SYSTEM_MEMORY_INTERVAL,
     DEFAULT_SYSTEM_NETWORK_IO_INTERVAL,
-    DEFAULT_SYSTEM_PING_INTERVAL,
     DEFAULT_SYSTEM_PROCESS_INTERVAL,
     DEFAULT_SYSTEM_TEMPS_INTERVAL,
     PingHostConfig,
     SystemConfig,
 )
-from core.filters import EntityFilter, default_disk_usage_filter, default_network_filter
-from core.rate import RateCalculator
-from core.units import resolve_unit
 from core.entities.base import CompositeEntity
 from core.entities.fetcher import SystemFetcher
 from core.entities.sensor import SystemSensor
+from core.filters import EntityFilter, default_disk_usage_filter, default_network_filter
+from core.rate import RateCalculator
+from core.units import resolve_unit
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +56,12 @@ class SystemMultiSensor(CompositeEntity):
         _ha_entities: dict[str, Any] | None = None,
     ):
         super().__init__(
-            mqtt_settings, device,
-            name=name, unique_id=unique_id, icon=icon, units=units,
+            mqtt_settings,
+            device,
+            name=name,
+            unique_id=unique_id,
+            icon=icon,
+            units=units,
         )
         self._fn = fn
         self._interval = interval
@@ -86,6 +89,8 @@ class SystemMultiSensor(CompositeEntity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Sensor as HASensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SensorInfo as HASensorInfo,
         )
 
@@ -158,35 +163,63 @@ def create_system_entities(
 
         if "percent" in cpu:
             if cpu["percent"].get("total", True):
-                entities.append(SystemSensor(
-                    mqtt_settings, cpu_device,
-                    fn=psutil.cpu_percent, name="CPU Usage", unique_id="cpu_usage",
-                    interval=interval, icon="mdi:cpu-64-bit", unit_of_measurement="%",
-                ))
+                entities.append(
+                    SystemSensor(
+                        mqtt_settings,
+                        cpu_device,
+                        fn=psutil.cpu_percent,
+                        name="CPU Usage",
+                        unique_id="cpu_usage",
+                        interval=interval,
+                        icon="mdi:cpu-64-bit",
+                        unit_of_measurement="%",
+                    )
+                )
             if cpu["percent"].get("per_cpu", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, cpu_device,
-                    name="CPU Usage", unique_id="cpu_usage_per_cpu",
-                    fn=partial(psutil.cpu_percent, percpu=True),
-                    interval=interval, icon="mdi:cpu-64-bit", units={},
-                    unit_context="cpu_percent", entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        cpu_device,
+                        name="CPU Usage",
+                        unique_id="cpu_usage_per_cpu",
+                        fn=partial(psutil.cpu_percent, percpu=True),
+                        interval=interval,
+                        icon="mdi:cpu-64-bit",
+                        units={},
+                        unit_context="cpu_percent",
+                        entity_category="diagnostic",
+                    )
+                )
 
         if "freq" in cpu:
             if cpu["freq"].get("total", False):
-                entities.append(SystemSensor(
-                    mqtt_settings, cpu_device,
-                    fn=psutil_bindings.cpu_freq, name="CPU Frequency", unique_id="cpu_freq",
-                    interval=interval, icon="mdi:cpu-64-bit", unit_of_measurement="GHz",
-                ))
+                entities.append(
+                    SystemSensor(
+                        mqtt_settings,
+                        cpu_device,
+                        fn=psutil_bindings.cpu_freq,
+                        name="CPU Frequency",
+                        unique_id="cpu_freq",
+                        interval=interval,
+                        icon="mdi:cpu-64-bit",
+                        unit_of_measurement="GHz",
+                    )
+                )
             if cpu["freq"].get("per_cpu", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, cpu_device,
-                    name="CPU Frequency", unique_id="cpu_freq_per_cpu",
-                    fn=partial(psutil_bindings.cpu_freq, percpu=True),
-                    interval=interval, icon="mdi:cpu-64-bit", units={},
-                    unit_context="frequency", entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        cpu_device,
+                        name="CPU Frequency",
+                        unique_id="cpu_freq_per_cpu",
+                        fn=partial(psutil_bindings.cpu_freq, percpu=True),
+                        interval=interval,
+                        icon="mdi:cpu-64-bit",
+                        units={},
+                        unit_context="frequency",
+                        entity_category="diagnostic",
+                    )
+                )
 
     # --- Memory ---
     if "memory" in config_dict:
@@ -195,27 +228,51 @@ def create_system_entities(
         mem_device = _get_device("Memory")
 
         if "virtual" in memory:
-            units = {k: "MB" for k in [
-                "total", "available", "used", "free", "active",
-                "inactive", "buffers", "cached", "shared", "slab", "wired",
-            ]}
+            units = {
+                k: "MB"
+                for k in [
+                    "total",
+                    "available",
+                    "used",
+                    "free",
+                    "active",
+                    "inactive",
+                    "buffers",
+                    "cached",
+                    "shared",
+                    "slab",
+                    "wired",
+                ]
+            }
             units["percent"] = "%"
-            entities.append(SystemMultiSensor(
-                mqtt_settings, mem_device,
-                name="Memory Virtual", unique_id="memory_virtual",
-                fn=psutil_bindings.virtual_memory, interval=interval,
-                icon="mdi:memory", units=units,
-            ))
+            entities.append(
+                SystemMultiSensor(
+                    mqtt_settings,
+                    mem_device,
+                    name="Memory Virtual",
+                    unique_id="memory_virtual",
+                    fn=psutil_bindings.virtual_memory,
+                    interval=interval,
+                    icon="mdi:memory",
+                    units=units,
+                )
+            )
 
         if "swap" in memory:
             units = {k: "MB" for k in ["total", "used", "free", "sin", "sout"]}
             units["percent"] = "%"
-            entities.append(SystemMultiSensor(
-                mqtt_settings, mem_device,
-                name="Memory Swap", unique_id="memory_swap",
-                fn=psutil_bindings.swap_memory, interval=interval,
-                icon="mdi:swap-horizontal", units=units,
-            ))
+            entities.append(
+                SystemMultiSensor(
+                    mqtt_settings,
+                    mem_device,
+                    name="Memory Swap",
+                    unique_id="memory_swap",
+                    fn=psutil_bindings.swap_memory,
+                    interval=interval,
+                    icon="mdi:swap-horizontal",
+                    units=units,
+                )
+            )
 
     # --- Storage ---
     if "storage" in config_dict:
@@ -253,13 +310,18 @@ def create_system_entities(
             for disk in valid_disks:
                 units = {k: "GB" for k in ["total", "used", "free"]}
                 units["percent"] = "%"
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, storage_device,
-                    name=f"Disk Usage {disk.mountpoint}",
-                    unique_id=f"disk_usage_{disk.device}_{disk.mountpoint}",
-                    fn=partial(psutil_bindings.disk_usage, disk.mountpoint),
-                    interval=disk_interval, icon="mdi:harddisk", units=units,
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        storage_device,
+                        name=f"Disk Usage {disk.mountpoint}",
+                        unique_id=f"disk_usage_{disk.device}_{disk.mountpoint}",
+                        fn=partial(psutil_bindings.disk_usage, disk.mountpoint),
+                        interval=disk_interval,
+                        icon="mdi:harddisk",
+                        units=units,
+                    )
+                )
 
         if "io" in storage:
             io_config = storage["io"]
@@ -268,49 +330,94 @@ def create_system_entities(
             exclude = io_config.get("filters", {}).get("exclude", [])
 
             if io_config.get("total", True):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, storage_device,
-                    name="Disk IO", unique_id="disk_io",
-                    fn=psutil_bindings.disk_io_counters, interval=io_interval,
-                    icon="mdi:harddisk", units={
-                        "read_count": "ops", "write_count": "ops",
-                        "read_bytes": "GB", "write_bytes": "GB",
-                        "read_time": "s", "write_time": "s", "busy_time": "s",
-                    },
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        storage_device,
+                        name="Disk IO",
+                        unique_id="disk_io",
+                        fn=psutil_bindings.disk_io_counters,
+                        interval=io_interval,
+                        icon="mdi:harddisk",
+                        units={
+                            "read_count": "ops",
+                            "write_count": "ops",
+                            "read_bytes": "GB",
+                            "write_bytes": "GB",
+                            "read_time": "s",
+                            "write_time": "s",
+                            "busy_time": "s",
+                        },
+                    )
+                )
 
             if io_config.get("rates", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, storage_device,
-                    name="Disk IO Rates", unique_id="disk_io_rates",
-                    fn=psutil_bindings.disk_io_rates, interval=io_interval,
-                    icon="mdi:harddisk", units={
-                        "read_rate": "ops/s", "write_rate": "ops/s",
-                        "read_byte_rate": "B/s", "write_byte_rate": "B/s",
-                        "read_percentage": "%", "write_percentage": "%",
-                        "busy_percentage": "%",
-                    },
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        storage_device,
+                        name="Disk IO Rates",
+                        unique_id="disk_io_rates",
+                        fn=psutil_bindings.disk_io_rates,
+                        interval=io_interval,
+                        icon="mdi:harddisk",
+                        units={
+                            "read_rate": "ops/s",
+                            "write_rate": "ops/s",
+                            "read_byte_rate": "B/s",
+                            "write_byte_rate": "B/s",
+                            "read_percentage": "%",
+                            "write_percentage": "%",
+                            "busy_percentage": "%",
+                        },
+                    )
+                )
 
             if io_config.get("per_disk", True) and io_config.get("counters", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, storage_device,
-                    name="Disk IO Per Disk", unique_id="disk_io_per_disk",
-                    fn=partial(psutil_bindings.disk_io_counters, perdisk=True, include=include, exclude=exclude),
-                    interval=io_interval, icon="mdi:harddisk",
-                    units={"read_count": "ops", "write_count": "ops", "read_bytes": "GB", "write_bytes": "GB", "read_time": "s", "write_time": "s", "busy_time": "s"},
-                    entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        storage_device,
+                        name="Disk IO Per Disk",
+                        unique_id="disk_io_per_disk",
+                        fn=partial(psutil_bindings.disk_io_counters, perdisk=True, include=include, exclude=exclude),
+                        interval=io_interval,
+                        icon="mdi:harddisk",
+                        units={
+                            "read_count": "ops",
+                            "write_count": "ops",
+                            "read_bytes": "GB",
+                            "write_bytes": "GB",
+                            "read_time": "s",
+                            "write_time": "s",
+                            "busy_time": "s",
+                        },
+                        entity_category="diagnostic",
+                    )
+                )
 
             if io_config.get("per_disk", True) and io_config.get("rates", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, storage_device,
-                    name="Disk IO Rates Per Disk", unique_id="disk_io_rates_per_disk",
-                    fn=partial(psutil_bindings.disk_io_rates, perdisk=True, include=include, exclude=exclude),
-                    interval=io_interval, icon="mdi:harddisk",
-                    units={"read_rate": "ops/s", "write_rate": "ops/s", "read_byte_rate": "B/s", "write_byte_rate": "B/s", "read_percentage": "%", "write_percentage": "%", "busy_percentage": "%"},
-                    entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        storage_device,
+                        name="Disk IO Rates Per Disk",
+                        unique_id="disk_io_rates_per_disk",
+                        fn=partial(psutil_bindings.disk_io_rates, perdisk=True, include=include, exclude=exclude),
+                        interval=io_interval,
+                        icon="mdi:harddisk",
+                        units={
+                            "read_rate": "ops/s",
+                            "write_rate": "ops/s",
+                            "read_byte_rate": "B/s",
+                            "write_byte_rate": "B/s",
+                            "read_percentage": "%",
+                            "write_percentage": "%",
+                            "busy_percentage": "%",
+                        },
+                        entity_category="diagnostic",
+                    )
+                )
 
     # --- Sensors (temperatures, fans) ---
     if "sensors" in config_dict:
@@ -318,22 +425,34 @@ def create_system_entities(
         sensors_device = _get_device("Sensors")
 
         if "temperatures" in sensors:
-            entities.append(SystemMultiSensor(
-                mqtt_settings, sensors_device,
-                name="Temperature", unique_id="sensors_temperatures",
-                fn=psutil_bindings.sensors_temperatures,
-                interval=DEFAULT_SYSTEM_TEMPS_INTERVAL,
-                icon="mdi:thermometer", units={}, unit_context="temperature",
-            ))
+            entities.append(
+                SystemMultiSensor(
+                    mqtt_settings,
+                    sensors_device,
+                    name="Temperature",
+                    unique_id="sensors_temperatures",
+                    fn=psutil_bindings.sensors_temperatures,
+                    interval=DEFAULT_SYSTEM_TEMPS_INTERVAL,
+                    icon="mdi:thermometer",
+                    units={},
+                    unit_context="temperature",
+                )
+            )
 
         if "fans" in sensors:
-            entities.append(SystemMultiSensor(
-                mqtt_settings, sensors_device,
-                name="Fan", unique_id="sensors_fans",
-                fn=psutil_bindings.sensors_fans,
-                interval=DEFAULT_SYSTEM_FANS_INTERVAL,
-                icon="mdi:fan", units={}, unit_context="fan",
-            ))
+            entities.append(
+                SystemMultiSensor(
+                    mqtt_settings,
+                    sensors_device,
+                    name="Fan",
+                    unique_id="sensors_fans",
+                    fn=psutil_bindings.sensors_fans,
+                    interval=DEFAULT_SYSTEM_FANS_INTERVAL,
+                    icon="mdi:fan",
+                    units={},
+                    unit_context="fan",
+                )
+            )
 
     # --- Network IO ---
     if "network" in config_dict:
@@ -354,27 +473,51 @@ def create_system_entities(
                 nic_exclude = [r"^veth", r"^docker", r"^br-", r"^virbr", r"^vnet", r"^lo$", r"^macvtap"]
 
             if io_config.get("total", True):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, network_device,
-                    name="Network IO", unique_id="network_io",
-                    fn=psutil_bindings.net_io_counters_total, interval=io_interval,
-                    icon="mdi:network", units={
-                        "bytes_sent": "MB", "bytes_recv": "MB",
-                        "packets_sent": "packets", "packets_recv": "packets",
-                        "errin": "errors", "errout": "errors",
-                        "dropin": "drops", "dropout": "drops",
-                    },
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        network_device,
+                        name="Network IO",
+                        unique_id="network_io",
+                        fn=psutil_bindings.net_io_counters_total,
+                        interval=io_interval,
+                        icon="mdi:network",
+                        units={
+                            "bytes_sent": "MB",
+                            "bytes_recv": "MB",
+                            "packets_sent": "packets",
+                            "packets_recv": "packets",
+                            "errin": "errors",
+                            "errout": "errors",
+                            "dropin": "drops",
+                            "dropout": "drops",
+                        },
+                    )
+                )
 
             if io_config.get("per_nic", False):
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, network_device,
-                    name="Network IO Per NIC", unique_id="network_io_per_nic",
-                    fn=partial(psutil_bindings.net_io_counters_per_nic, include=nic_include, exclude=nic_exclude),
-                    interval=io_interval, icon="mdi:network",
-                    units={"bytes_sent": "MB", "bytes_recv": "MB", "packets_sent": "packets", "packets_recv": "packets", "errin": "errors", "errout": "errors", "dropin": "drops", "dropout": "drops"},
-                    entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        network_device,
+                        name="Network IO Per NIC",
+                        unique_id="network_io_per_nic",
+                        fn=partial(psutil_bindings.net_io_counters_per_nic, include=nic_include, exclude=nic_exclude),
+                        interval=io_interval,
+                        icon="mdi:network",
+                        units={
+                            "bytes_sent": "MB",
+                            "bytes_recv": "MB",
+                            "packets_sent": "packets",
+                            "packets_recv": "packets",
+                            "errin": "errors",
+                            "errout": "errors",
+                            "dropin": "drops",
+                            "dropout": "drops",
+                        },
+                        entity_category="diagnostic",
+                    )
+                )
 
             if io_config.get("rates", False):
                 rate_calc = RateCalculator()
@@ -383,17 +526,27 @@ def create_system_entities(
                     counters = psutil_bindings.net_io_counters_total()
                     return rc.update(counters)
 
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, network_device,
-                    name="Network IO Rates", unique_id="network_io_rates",
-                    fn=_net_io_rates_total, interval=io_interval,
-                    icon="mdi:network", units={
-                        "bytes_sent": "MB/s", "bytes_recv": "MB/s",
-                        "packets_sent": "packets/s", "packets_recv": "packets/s",
-                        "errin": "errors/s", "errout": "errors/s",
-                        "dropin": "drops/s", "dropout": "drops/s",
-                    },
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        network_device,
+                        name="Network IO Rates",
+                        unique_id="network_io_rates",
+                        fn=_net_io_rates_total,
+                        interval=io_interval,
+                        icon="mdi:network",
+                        units={
+                            "bytes_sent": "MB/s",
+                            "bytes_recv": "MB/s",
+                            "packets_sent": "packets/s",
+                            "packets_recv": "packets/s",
+                            "errin": "errors/s",
+                            "errout": "errors/s",
+                            "dropin": "drops/s",
+                            "dropout": "drops/s",
+                        },
+                    )
+                )
 
             if io_config.get("rates_per_nic", False):
                 rate_calc_per_nic = RateCalculator()
@@ -402,26 +555,42 @@ def create_system_entities(
                     counters = psutil_bindings.net_io_counters_per_nic(include=inc, exclude=exc)
                     return rc.update(counters)
 
-                entities.append(SystemMultiSensor(
-                    mqtt_settings, network_device,
-                    name="Network IO Rates Per NIC", unique_id="network_io_rates_per_nic",
-                    fn=_net_io_rates_per_nic, interval=io_interval,
-                    icon="mdi:network",
-                    units={"bytes_sent": "MB/s", "bytes_recv": "MB/s", "packets_sent": "packets/s", "packets_recv": "packets/s", "errin": "errors/s", "errout": "errors/s", "dropin": "drops/s", "dropout": "drops/s"},
-                    entity_category="diagnostic",
-                ))
+                entities.append(
+                    SystemMultiSensor(
+                        mqtt_settings,
+                        network_device,
+                        name="Network IO Rates Per NIC",
+                        unique_id="network_io_rates_per_nic",
+                        fn=_net_io_rates_per_nic,
+                        interval=io_interval,
+                        icon="mdi:network",
+                        units={
+                            "bytes_sent": "MB/s",
+                            "bytes_recv": "MB/s",
+                            "packets_sent": "packets/s",
+                            "packets_recv": "packets/s",
+                            "errin": "errors/s",
+                            "errout": "errors/s",
+                            "dropin": "drops/s",
+                            "dropout": "drops/s",
+                        },
+                        entity_category="diagnostic",
+                    )
+                )
 
         # --- Ping sensors ---
         if "ping" in network and network["ping"]:
             from core.network_sensors import PingSensor
+
             for ping_entry in network["ping"]:
                 ping_config = PingHostConfig(**ping_entry) if isinstance(ping_entry, dict) else ping_entry
                 entities.append(PingSensor(mqtt_settings, network_device, config=ping_config))
 
         # --- DNS sensors ---
         if "dns" in network and network["dns"]:
-            from core.network_sensors import DNSSensor
             from core.config import DNSHostConfig
+            from core.network_sensors import DNSSensor
+
             for dns_entry in network["dns"]:
                 dns_config = DNSHostConfig(**dns_entry) if isinstance(dns_entry, dict) else dns_entry
                 entities.append(DNSSensor(mqtt_settings, network_device, config=dns_config))
@@ -435,15 +604,24 @@ def create_system_entities(
             proc_pattern = proc_config["pattern"]
             proc_interval = proc_config.get("polling_interval", DEFAULT_SYSTEM_PROCESS_INTERVAL)
             monitor = psutil_bindings.ProcessMonitor(proc_pattern)
-            entities.append(SystemMultiSensor(
-                mqtt_settings, proc_device,
-                name=f"Process {proc_name}", unique_id=f"process_{proc_id}",
-                fn=monitor.get_stats, interval=proc_interval,
-                icon="mdi:application", units={
-                    "status": None, "cpu_percent": "%", "memory_percent": "%",
-                    "memory_rss": "MB", "memory_vms": "MB",
-                },
-            ))
+            entities.append(
+                SystemMultiSensor(
+                    mqtt_settings,
+                    proc_device,
+                    name=f"Process {proc_name}",
+                    unique_id=f"process_{proc_id}",
+                    fn=monitor.get_stats,
+                    interval=proc_interval,
+                    icon="mdi:application",
+                    units={
+                        "status": None,
+                        "cpu_percent": "%",
+                        "memory_percent": "%",
+                        "memory_rss": "MB",
+                        "memory_vms": "MB",
+                    },
+                )
+            )
 
     logger.info("Created %d system entities", len(entities))
     return entities

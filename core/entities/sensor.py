@@ -6,7 +6,6 @@ CommandSensor uses a CommandFetcher for subprocess-based value retrieval.
 
 import logging
 
-from core.config import DEFAULT_SENSOR_INTERVAL
 from core.entities.base import Entity
 from core.entities.fetcher import CommandFetcher, StateFetcher, SystemFetcher
 
@@ -74,6 +73,8 @@ class CommandSensor(Sensor):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Sensor as HASensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SensorInfo as HASensorInfo,
         )
 
@@ -139,6 +140,8 @@ class SystemSensor(Sensor):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Sensor as HASensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SensorInfo as HASensorInfo,
         )
 

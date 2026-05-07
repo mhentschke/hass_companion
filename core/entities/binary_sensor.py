@@ -6,7 +6,6 @@ CommandBinarySensor uses a CommandFetcher for subprocess-based value retrieval.
 
 import logging
 
-from core.config import DEFAULT_BINARY_SENSOR_INTERVAL
 from core.entities.fetcher import CommandFetcher, StateFetcher
 from core.entities.sensor import Sensor
 
@@ -49,6 +48,8 @@ class BinarySensor(Sensor):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             BinarySensor as HABinarySensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             BinarySensorInfo as HABinarySensorInfo,
         )
 
@@ -83,6 +84,8 @@ class CommandBinarySensor(BinarySensor):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             BinarySensor as HABinarySensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             BinarySensorInfo as HABinarySensorInfo,
         )
 

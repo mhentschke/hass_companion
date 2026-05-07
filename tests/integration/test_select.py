@@ -1,9 +1,9 @@
 """Integration tests for Select entity with async command execution and mocked HA entity."""
 
 import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 
 from core.config import SelectConfig, SensorConfig
 from core.entities.select import Select

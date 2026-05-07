@@ -164,7 +164,4 @@ def test_app_shuts_down_cleanly_on_sigterm(mqtt_broker):
         proc.kill()
         pytest.fail("App did not exit within 15s after SIGTERM")
 
-    assert returncode == 0, (
-        f"App exited with code {returncode}. "
-        f"stderr: {proc.stderr.read().decode()}"
-    )
+    assert returncode == 0, f"App exited with code {returncode}. stderr: {proc.stderr.read().decode()}"

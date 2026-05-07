@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from core.platform.linux import LinuxPlatform
-from core.platform.darwin import DarwinPlatform
 from core.platform import get_platform
+from core.platform.darwin import DarwinPlatform
+from core.platform.linux import LinuxPlatform
 
 
 class TestLinuxPlatform:

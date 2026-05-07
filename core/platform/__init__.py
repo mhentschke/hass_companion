@@ -8,8 +8,8 @@ Usage:
 import platform as _platform
 
 from core.platform.base import PlatformCommands
-from core.platform.linux import LinuxPlatform
 from core.platform.darwin import DarwinPlatform
+from core.platform.linux import LinuxPlatform
 
 _PLATFORMS: dict[str, type[PlatformCommands]] = {
     "Linux": LinuxPlatform,

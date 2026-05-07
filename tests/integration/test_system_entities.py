@@ -1,9 +1,9 @@
 """Integration tests for SystemFetcher and SystemMultiSensor."""
 
 import asyncio
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from core.entities.fetcher import SystemFetcher
 from core.entities.system import SystemMultiSensor
@@ -81,7 +81,8 @@ class TestSystemMultiSensor:
         mock_entities = {"temp": mock_temp, "humidity": mock_humidity}
 
         sensor = SystemMultiSensor(
-            None, None,
+            None,
+            None,
             name="Test",
             unique_id="test",
             fn=lambda: {"temp": 42.0, "humidity": 65},
@@ -105,7 +106,8 @@ class TestSystemMultiSensor:
         mock_entities = {"0": mock_0, "1": mock_1, "2": mock_2}
 
         sensor = SystemMultiSensor(
-            None, None,
+            None,
+            None,
             name="CPU",
             unique_id="cpu",
             fn=lambda: [10.0, 20.0, 30.0],

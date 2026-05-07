@@ -1,9 +1,9 @@
 """Integration tests for CommandSensor with mocked HA entity."""
 
 import asyncio
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from core.config import SensorConfig
 from core.entities.sensor import CommandSensor

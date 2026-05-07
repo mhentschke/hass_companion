@@ -34,6 +34,8 @@ class Select(InteractiveEntity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Select as HASelect,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SelectInfo as HASelectInfo,
         )
 

@@ -8,7 +8,6 @@ import pytest
 from core.config import DNSHostConfig
 from core.network_sensors import DNSSensor
 
-
 DIG_SUCCESS_OUTPUT = (
     "; <<>> DiG 9.18.18 <<>> google.com\n"
     ";; global options: +cmd\n"
@@ -39,9 +38,7 @@ DIG_FAILURE_OUTPUT = """\
 def _make_mock_process(stdout_text: str, returncode: int = 0):
     """Create a mock async subprocess that returns given stdout."""
     mock_proc = AsyncMock()
-    mock_proc.communicate = AsyncMock(
-        return_value=(stdout_text.encode(), b"")
-    )
+    mock_proc.communicate = AsyncMock(return_value=(stdout_text.encode(), b""))
     mock_proc.returncode = returncode
     return mock_proc
 

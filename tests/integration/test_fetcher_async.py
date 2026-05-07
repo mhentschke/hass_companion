@@ -1,12 +1,12 @@
 """Integration tests for async StateFetcher, CommandFetcher, and SystemFetcher."""
 
 import asyncio
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock, patch
 
-from core.entities.fetcher import CommandFetcher, StateFetcher, SystemFetcher
 from core.config import SensorConfig
+from core.entities.fetcher import CommandFetcher, StateFetcher, SystemFetcher
 
 
 class TestStateFetcherAsync:
@@ -22,8 +22,11 @@ class TestStateFetcherAsync:
                 return "hello"
 
         config = SensorConfig(
-            name="Test", id="test", command="echo hi",
-            polling_interval=0.05, parse=[],
+            name="Test",
+            id="test",
+            command="echo hi",
+            polling_interval=0.05,
+            parse=[],
         )
         fetcher = SimpleFetcher(config, callback, parser_configs=[])
 
@@ -49,11 +52,16 @@ class TestStateFetcherAsync:
                 raise RuntimeError("always fails")
 
         config = SensorConfig(
-            name="Test", id="test", command="fail",
-            polling_interval=0.05, parse=[],
+            name="Test",
+            id="test",
+            command="fail",
+            polling_interval=0.05,
+            parse=[],
         )
         fetcher = FailingFetcher(
-            config, Mock(), parser_configs=[],
+            config,
+            Mock(),
+            parser_configs=[],
             availability_callback=availability_cb,
         )
 
@@ -79,11 +87,16 @@ class TestStateFetcherAsync:
                 return "ok"
 
         config = SensorConfig(
-            name="Test", id="test", command="x",
-            polling_interval=0.05, parse=[],
+            name="Test",
+            id="test",
+            command="x",
+            polling_interval=0.05,
+            parse=[],
         )
         fetcher = RecoveringFetcher(
-            config, Mock(), parser_configs=[],
+            config,
+            Mock(),
+            parser_configs=[],
             availability_callback=availability_cb,
         )
 
@@ -107,8 +120,11 @@ class TestCommandFetcherAsync:
         """Verify CommandFetcher calls run_command and passes result to callback."""
         callback = Mock()
         config = SensorConfig(
-            name="Test", id="test", command="echo 42",
-            polling_interval=0.05, parse=[{"type": "int"}],
+            name="Test",
+            id="test",
+            command="echo 42",
+            polling_interval=0.05,
+            parse=[{"type": "int"}],
         )
         fetcher = CommandFetcher(config, callback, parser_configs=config.parse)
 
@@ -124,8 +140,12 @@ class TestCommandFetcherAsync:
         """Verify CommandFetcher records failure on timeout."""
         callback = Mock()
         config = SensorConfig(
-            name="Test", id="test", command="sleep 10",
-            polling_interval=0.05, command_timeout=0.1, parse=[],
+            name="Test",
+            id="test",
+            command="sleep 10",
+            polling_interval=0.05,
+            command_timeout=0.1,
+            parse=[],
         )
         fetcher = CommandFetcher(config, callback, parser_configs=[])
 

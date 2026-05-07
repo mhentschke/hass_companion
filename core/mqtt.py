@@ -95,7 +95,7 @@ class MQTTReconnectionManager:
         """Re-publish discovery and last known state for all entities."""
         logger.info("Republishing discovery and state for %d entities", len(self._entities))
         for entity in self._entities:
-            if hasattr(entity, 'republish'):
+            if hasattr(entity, "republish"):
                 try:
                     entity.republish()
                 except Exception as e:

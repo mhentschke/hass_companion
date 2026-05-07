@@ -253,9 +253,7 @@ class TestStateUpdates:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "Echo-Sensor" in m.topic
-                and m.payload.decode() == "42",
+                lambda m: "/config" not in m.topic and "Echo-Sensor" in m.topic and m.payload.decode() == "42",
             )
             assert msg is not None, (
                 f"No state '42' for Echo-Sensor. "
@@ -276,9 +274,11 @@ class TestStateUpdates:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "Echo-Binary" in m.topic
-                and m.payload.decode().upper() in ("ON", "TRUE", "1"),
+                lambda m: (
+                    "/config" not in m.topic
+                    and "Echo-Binary" in m.topic
+                    and m.payload.decode().upper() in ("ON", "TRUE", "1")
+                ),
             )
             assert msg is not None, (
                 f"No ON/true state for Echo-Binary. "
@@ -299,9 +299,7 @@ class TestStateUpdates:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "CPU" in m.topic
-                and _is_numeric(m.payload.decode()),
+                lambda m: "/config" not in m.topic and "CPU" in m.topic and _is_numeric(m.payload.decode()),
             )
             assert msg is not None, (
                 f"No numeric state for CPU entity. "
@@ -349,9 +347,7 @@ class TestNetworkIOEntities:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "Network-IO" in m.topic
-                and _is_numeric(m.payload.decode()),
+                lambda m: "/config" not in m.topic and "Network-IO" in m.topic and _is_numeric(m.payload.decode()),
             )
             assert msg is not None, (
                 f"No numeric state for Network IO entity. "
@@ -399,9 +395,7 @@ class TestPingSensorEntities:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "ping" in m.topic.lower()
-                and _is_numeric(m.payload.decode()),
+                lambda m: "/config" not in m.topic and "ping" in m.topic.lower() and _is_numeric(m.payload.decode()),
             )
             assert msg is not None, (
                 f"No numeric state for Ping sensor. "
@@ -449,9 +443,7 @@ class TestDNSSensorEntities:
         try:
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "dns" in m.topic.lower()
-                and _is_numeric(m.payload.decode()),
+                lambda m: "/config" not in m.topic and "dns" in m.topic.lower() and _is_numeric(m.payload.decode()),
             )
             assert msg is not None, (
                 f"No numeric state for DNS sensor. "
@@ -501,11 +493,12 @@ class TestProcessEntities:
             # that contains a process-related value (numeric or status string)
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "Process" in m.topic
-                and (
-                    _is_numeric(m.payload.decode())
-                    or m.payload.decode() in ("running", "sleeping", "Not Running")
+                lambda m: (
+                    "/config" not in m.topic
+                    and "Process" in m.topic
+                    and (
+                        _is_numeric(m.payload.decode()) or m.payload.decode() in ("running", "sleeping", "Not Running")
+                    )
                 ),
             )
             assert msg is not None, (
@@ -546,9 +539,11 @@ class TestInteractiveCommands:
             # Wait for state feedback showing ON
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "File-Switch" in m.topic
-                and m.payload.decode().upper() in ("ON", "TRUE", "1"),
+                lambda m: (
+                    "/config" not in m.topic
+                    and "File-Switch" in m.topic
+                    and m.payload.decode().upper() in ("ON", "TRUE", "1")
+                ),
                 timeout=10.0,
             )
             assert msg is not None, (
@@ -585,8 +580,7 @@ class TestInteractiveCommands:
             # Give the app time to process — it should not crash
             time.sleep(3)
             assert proc.poll() is None, (
-                f"App crashed after button press. "
-                f"Return code: {proc.returncode}, stderr: {proc.stderr.read().decode()}"
+                f"App crashed after button press. Return code: {proc.returncode}, stderr: {proc.stderr.read().decode()}"
             )
         finally:
             _stop_app(proc)
@@ -618,9 +612,9 @@ class TestInteractiveCommands:
             # Wait for state update reflecting the selection
             msg = _wait_for_message(
                 messages,
-                lambda m: "/config" not in m.topic
-                and "Mode-Select" in m.topic
-                and m.payload.decode() in ("High", "high"),
+                lambda m: (
+                    "/config" not in m.topic and "Mode-Select" in m.topic and m.payload.decode() in ("High", "high")
+                ),
                 timeout=10.0,
             )
             assert msg is not None, (
@@ -646,8 +640,7 @@ class TestGracefulShutdown:
 
         # Verify app is still running
         assert proc.poll() is None, (
-            f"App exited prematurely. Code: {proc.returncode}, "
-            f"stderr: {proc.stderr.read().decode()}"
+            f"App exited prematurely. Code: {proc.returncode}, stderr: {proc.stderr.read().decode()}"
         )
 
         # Send SIGTERM
@@ -659,7 +652,4 @@ class TestGracefulShutdown:
             proc.kill()
             pytest.fail("App did not exit within 15s after SIGTERM")
 
-        assert returncode == 0, (
-            f"App exited with code {returncode}. "
-            f"stderr: {proc.stderr.read().decode()}"
-        )
+        assert returncode == 0, f"App exited with code {returncode}. stderr: {proc.stderr.read().decode()}"

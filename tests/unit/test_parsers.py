@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.config import ParserConfig
 from core.parsers import (
     BoolResultParser,
     CompareResultParser,
@@ -10,10 +11,11 @@ from core.parsers import (
     RegexResultParser,
     StateMapResultParser,
     StringResultParser,
+    build_pipeline,
 )
 
-
 # --- IntResultParser ---
+
 
 class TestIntResultParser:
     def setup_method(self):
@@ -36,6 +38,7 @@ class TestIntResultParser:
 
 # --- FloatResultParser ---
 
+
 class TestFloatResultParser:
     def setup_method(self):
         self.parser = FloatResultParser()
@@ -52,6 +55,7 @@ class TestFloatResultParser:
 
 
 # --- BoolResultParser ---
+
 
 class TestBoolResultParser:
     def setup_method(self):
@@ -71,6 +75,7 @@ class TestBoolResultParser:
 
 # --- StringResultParser ---
 
+
 class TestStringResultParser:
     def setup_method(self):
         self.parser = StringResultParser()
@@ -87,6 +92,7 @@ class TestStringResultParser:
 
 # --- RegexResultParser ---
 
+
 class TestRegexResultParser:
     def test_match_with_group(self):
         parser = RegexResultParser(r"temp=(\d+)", group=1)
@@ -102,6 +108,7 @@ class TestRegexResultParser:
 
 
 # --- CompareResultParser ---
+
 
 class TestCompareResultParser:
     def test_less_than(self):
@@ -141,6 +148,7 @@ class TestCompareResultParser:
 
 # --- StateMapResultParser ---
 
+
 class TestStateMapResultParser:
     def setup_method(self):
         self.parser = StateMapResultParser({"on": "running", "off": "stopped"})
@@ -154,6 +162,7 @@ class TestStateMapResultParser:
 
 
 # --- Parser chaining ---
+
 
 class TestParserChaining:
     def test_regex_float_compare_pipeline(self):
@@ -178,9 +187,6 @@ class TestParserChaining:
 
 
 # --- build_pipeline factory ---
-
-from core.parsers import build_pipeline
-from core.config import ParserConfig
 
 
 class TestBuildPipeline:

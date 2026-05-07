@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from ha_mqtt_discoverable import DeviceInfo as HADeviceInfo
 from ha_mqtt_discoverable import Settings as HASettings
 
-from core.config import load_config, ConfigError
+from core.config import ConfigError, load_config
 from core.discovery import clean_discovery
 from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
@@ -137,9 +137,7 @@ def _resolve_device(entity_config, ha_device, ha_devices):
     return ha_device
 
 
-def _load_entities_via_factory(
-    entity_type: str, entity_configs: list, mqtt_settings, ha_device, ha_devices
-) -> list:
+def _load_entities_via_factory(entity_type: str, entity_configs: list, mqtt_settings, ha_device, ha_devices) -> list:
     """Create entities using the factory, passing Pydantic configs directly."""
     created = []
     for config in entity_configs:

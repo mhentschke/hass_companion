@@ -10,8 +10,8 @@ import logging
 from typing import Any
 
 from core.config import DNSHostConfig, PingHostConfig
-from core.entities.base import CompositeEntity
 from core.dns_bindings import parse_dig
+from core.entities.base import CompositeEntity
 from core.ping_bindings import parse_ping
 from core.platform import current_platform
 
@@ -62,6 +62,8 @@ class PingSensor(CompositeEntity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Sensor as HASensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SensorInfo as HASensorInfo,
         )
 
@@ -104,9 +106,7 @@ class PingSensor(CompositeEntity):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(), timeout=self._config.timeout + 5
-            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=self._config.timeout + 5)
             output = stdout.decode()
 
             try:
@@ -203,6 +203,8 @@ class DNSSensor(CompositeEntity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Sensor as HASensor,
+        )
+        from ha_mqtt_discoverable.sensors import (
             SensorInfo as HASensorInfo,
         )
 
@@ -240,9 +242,7 @@ class DNSSensor(CompositeEntity):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(), timeout=30
-            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
             output = stdout.decode()
 
             try:

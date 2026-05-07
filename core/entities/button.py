@@ -37,6 +37,8 @@ class Button(Entity):
         from ha_mqtt_discoverable import Settings as HASettings
         from ha_mqtt_discoverable.sensors import (
             Button as HAButton,
+        )
+        from ha_mqtt_discoverable.sensors import (
             ButtonInfo as HAButtonInfo,
         )
 
@@ -54,9 +56,7 @@ class Button(Entity):
         self._loop = asyncio.get_running_loop()
         while not self._exit.is_set():
             try:
-                await asyncio.wait_for(
-                    self._command_queue.get(), timeout=1.0
-                )
+                await asyncio.wait_for(self._command_queue.get(), timeout=1.0)
                 await self._execute_press()
             except asyncio.TimeoutError:
                 continue

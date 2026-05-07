@@ -44,7 +44,7 @@ class InteractiveEntity(Entity):
         """Concurrently handle commands and poll feedback."""
         self._loop = asyncio.get_running_loop()
         # If no feedback fetcher, publish available immediately (optimistic mode)
-        if not self._feedback_fetcher and hasattr(self._ha_entity, 'set_availability'):
+        if not self._feedback_fetcher and hasattr(self._ha_entity, "set_availability"):
             self._ha_entity.set_availability(True)
         tasks = [self._handle_commands()]
         if self._feedback_fetcher:
@@ -55,9 +55,7 @@ class InteractiveEntity(Entity):
         """Process commands from the queue until shutdown."""
         while not self._exit.is_set():
             try:
-                payload = await asyncio.wait_for(
-                    self._command_queue.get(), timeout=1.0
-                )
+                payload = await asyncio.wait_for(self._command_queue.get(), timeout=1.0)
                 await self._execute_action(payload)
             except asyncio.TimeoutError:
                 continue

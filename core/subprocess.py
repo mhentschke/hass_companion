@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 
 class CommandTimeout(Exception):
     """Raised when a shell command exceeds its timeout."""
+
     pass
 
 
 class CommandFailed(Exception):
     """Raised when a shell command fails to execute."""
+
     pass
 
 
@@ -41,13 +43,15 @@ async def run_command(
     """
     try:
         proc = await asyncio.create_subprocess_exec(
-            shell, "--noprofile", "--norc", "-c", command,
+            shell,
+            "--noprofile",
+            "--norc",
+            "-c",
+            command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return stdout.decode().rstrip("\n")
     except asyncio.TimeoutError:
         proc.kill()

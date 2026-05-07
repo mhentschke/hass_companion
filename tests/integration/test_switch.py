@@ -1,9 +1,9 @@
 """Integration tests for Switch entity with async command execution and mocked HA entity."""
 
 import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 
 from core.config import BinarySensorConfig, SwitchConfig
 from core.entities.switch import Switch
