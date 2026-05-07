@@ -15,4 +15,7 @@ RUN pipx install .
 
 # Verify CLI entry point works
 RUN hass-companion --version
-RUN hass-companion --validate --config /app/tests/install/config.yaml
+
+# Validate with an inline minimal config
+RUN printf 'mqtt:\n  host: localhost\n  port: 1883\nhass:\n  device_name: Test\n  device_id: test\n' > /tmp/test-config.yaml && \
+    hass-companion --validate --config /tmp/test-config.yaml
