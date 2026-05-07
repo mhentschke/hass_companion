@@ -18,6 +18,7 @@ from core.factory import create_entity as factory_create_entity
 from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
 from core.mqtt import MQTTReconnectionManager
 from core.reload import ReloadManager
+from core.watcher import ConfigFileWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,10 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
         device_name=app_config.hass.device_name,
     )
 
+    # Set up config file watcher if requested
+    watcher: ConfigFileWatcher | None = None
+    watcher_task: asyncio.Task | None = None
+
     def shutdown_handler():
         logger.info("Shutdown signal received")
         shutdown_event.set()
@@ -250,6 +255,8 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
             if hasattr(entity, "stop"):
                 entity.stop()
         reconnection_manager.stop()
+        if watcher:
+            watcher.stop()
 
     def sighup_handler():
         logger.info("SIGHUP received — scheduling config reload")
@@ -260,6 +267,17 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown_handler)
     loop.add_signal_handler(signal.SIGHUP, sighup_handler)
+
+    # Start file watcher if enabled
+    if watch_config:
+
+        async def _watcher_callback() -> None:
+            logger.info("Config file changed — scheduling reload")
+            reload_event.set()
+
+        watcher = ConfigFileWatcher(config_path, _watcher_callback)
+        watcher_task = asyncio.create_task(watcher.run())
+        logger.info("Config file watcher enabled for %s", config_path)
 
     # Launch all entity run() coroutines as tasks
     entity_tasks: list[asyncio.Task] = [
@@ -333,8 +351,12 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
     for task in entity_tasks:
         task.cancel()
     reconnection_task.cancel()
+    if watcher_task:
+        watcher_task.cancel()
 
     all_tasks = entity_tasks + [reconnection_task]
+    if watcher_task:
+        all_tasks.append(watcher_task)
     if all_tasks:
         done, pending = await asyncio.wait(all_tasks, timeout=5.0)
         for task in pending:
