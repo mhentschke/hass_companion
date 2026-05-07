@@ -1,7 +1,7 @@
 [project]
 name = "hass-companion"
-version = "0.1.0"
-description = "A lightweight Home Assistant companion for Linux"
+dynamic = ["version"]
+description = "A lightweight Home Assistant companion for Linux/macOS"
 requires-python = ">=3.12"
 dependencies = [
     "bidict>=0.23,<1.0",
@@ -12,6 +12,15 @@ dependencies = [
     "PyYAML>=6.0",
     "psutil>=5.9",
 ]
+
+[project.scripts]
+hass-companion = "hass_companion.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "hass_companion.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["hass_companion*", "core*"]
 
 [project.optional-dependencies]
 dev = [

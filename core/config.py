@@ -6,13 +6,18 @@ Defines typed schemas for all config.yaml sections with automatic validation.
 import logging
 import os
 import re
-import sys
 from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
+
+
+class ConfigError(Exception):
+    """Raised when configuration loading or validation fails."""
+
+    pass
 
 
 # --- Polling interval defaults (seconds) ---
@@ -321,24 +326,20 @@ yaml.add_constructor("!envvar", _path_constructor, yaml.SafeLoader)
 def load_config(filepath: str) -> AppConfig:
     """Load YAML config, resolve env vars, and validate with Pydantic.
 
-    Exits with code 1 and a clear error message on validation failure.
+    Raises ConfigError on validation failure.
     """
     try:
         with open(filepath) as f:
             raw = yaml.safe_load(f)
     except FileNotFoundError:
-        logger.error("Configuration file not found: %s", filepath)
-        sys.exit(1)
+        raise ConfigError(f"Configuration file not found: {filepath}")
     except yaml.YAMLError as e:
-        logger.error("Failed to parse configuration file: %s", e)
-        sys.exit(1)
+        raise ConfigError(f"Failed to parse configuration file: {e}")
 
     if raw is None:
-        logger.error("Configuration file is empty: %s", filepath)
-        sys.exit(1)
+        raise ConfigError(f"Configuration file is empty: {filepath}")
 
     try:
         return AppConfig(**raw)
     except ValidationError as e:
-        logger.error("Configuration validation failed:\n%s", e)
-        sys.exit(1)
+        raise ConfigError(f"Configuration validation failed:\n{e}")

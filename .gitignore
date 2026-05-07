@@ -5,4 +5,5 @@ config.yaml
 config *.yaml
 __pycache__/
 *.pyc
+*.egg-info/
 .kiro/
