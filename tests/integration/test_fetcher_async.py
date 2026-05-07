@@ -42,14 +42,20 @@ class TestStateFetcherAsync:
 
     @pytest.mark.asyncio
     async def test_availability_tracking_marks_unavailable(self):
-        """Verify fetcher marks unavailable after consecutive failures."""
+        """Verify fetcher transitions to unavailable after success then consecutive failures.
+
+        The fetcher starts as unavailable. It must first become available (via a success)
+        before the availability_callback(False) transition can fire.
+        """
         availability_cb = Mock()
         call_count = {"n": 0}
 
-        class FailingFetcher(StateFetcher):
+        class SuccessThenFailFetcher(StateFetcher):
             async def _fetch_value(self):
                 call_count["n"] += 1
-                raise RuntimeError("always fails")
+                if call_count["n"] == 1:
+                    return "ok"  # First call succeeds → marks available
+                raise RuntimeError("always fails after first")
 
         config = SensorConfig(
             name="Test",
@@ -58,7 +64,7 @@ class TestStateFetcherAsync:
             polling_interval=0.05,
             parse=[],
         )
-        fetcher = FailingFetcher(
+        fetcher = SuccessThenFailFetcher(
             config,
             Mock(),
             parser_configs=[],
@@ -66,25 +72,32 @@ class TestStateFetcherAsync:
         )
 
         task = asyncio.create_task(fetcher.run())
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(0.35)
         fetcher._exit.set()
         await task
 
         assert not fetcher.available
-        availability_cb.assert_called_with(False)
+        calls = [c[0][0] for c in availability_cb.call_args_list]
+        assert True in calls  # Became available on first success
+        assert False in calls  # Became unavailable after threshold failures
 
     @pytest.mark.asyncio
     async def test_availability_recovery(self):
-        """Verify fetcher recovers availability after failures then success."""
+        """Verify fetcher recovers availability after becoming unavailable.
+
+        Sequence: 1 success (available), then 3+ failures (unavailable), then success (recovery).
+        """
         availability_cb = Mock()
         call_count = {"n": 0}
 
         class RecoveringFetcher(StateFetcher):
             async def _fetch_value(self):
                 call_count["n"] += 1
-                if call_count["n"] <= 3:
-                    raise RuntimeError("fail")
-                return "ok"
+                if call_count["n"] == 1:
+                    return "ok"  # First success → available
+                if call_count["n"] <= 5:
+                    raise RuntimeError("fail")  # 4 failures → unavailable
+                return "recovered"
 
         config = SensorConfig(
             name="Test",
@@ -101,12 +114,12 @@ class TestStateFetcherAsync:
         )
 
         task = asyncio.create_task(fetcher.run())
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(0.5)
         fetcher._exit.set()
         await task
 
         assert fetcher.available
-        # Should have been called with False then True
+        # Should have been called with True (initial), False (after failures), True (recovery)
         calls = [c[0][0] for c in availability_cb.call_args_list]
         assert False in calls
         assert True in calls
