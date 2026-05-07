@@ -135,7 +135,7 @@ class PingSensor(CompositeEntity):
         self._failure_count = 0
         if not self._available:
             self._available = True
-            logger.info("Ping %s is now available", self._config.host)
+            logger.info("Ping %s recovered", self._config.host)
             if self._ha_entities:
                 for entity in self._ha_entities.values():
                     if hasattr(entity, "set_availability"):
@@ -147,7 +147,7 @@ class PingSensor(CompositeEntity):
         if self._failure_count >= self._failure_threshold and self._available:
             self._available = False
             logger.warning(
-                "Ping %s is now unavailable after %d consecutive failures",
+                "Ping %s unavailable after %d consecutive failures",
                 self._config.host,
                 self._failure_count,
             )
@@ -267,7 +267,7 @@ class DNSSensor(CompositeEntity):
         self._failure_count = 0
         if not self._available:
             self._available = True
-            logger.info("DNS %s is now available", self._config.host)
+            logger.info("DNS %s recovered", self._config.host)
             if self._ha_entities:
                 for entity in self._ha_entities.values():
                     if hasattr(entity, "set_availability"):
@@ -279,7 +279,7 @@ class DNSSensor(CompositeEntity):
         if self._failure_count >= self._failure_threshold and self._available:
             self._available = False
             logger.warning(
-                "DNS %s is now unavailable after %d consecutive failures",
+                "DNS %s unavailable after %d consecutive failures",
                 self._config.host,
                 self._failure_count,
             )

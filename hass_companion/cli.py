@@ -35,6 +35,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Set logging verbosity (default: INFO)",
     )
     parser.add_argument(
+        "--log-format",
+        default="text",
+        choices=["text", "json"],
+        help="Log output format (default: text)",
+    )
+    parser.add_argument(
+        "--watch-config",
+        action="store_true",
+        help="Watch configuration file for changes and reload automatically",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -47,9 +58,10 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    from hass_companion.main import dry_run, run_app, setup_logging, validate_config
+    from core.logging import setup_logging
+    from hass_companion.main import dry_run, run_app, validate_config
 
-    setup_logging(args.log_level)
+    setup_logging(args.log_level, format=args.log_format)
 
     if args.validate:
         sys.exit(validate_config(args.config))

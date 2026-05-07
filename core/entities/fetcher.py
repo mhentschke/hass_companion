@@ -72,7 +72,7 @@ class StateFetcher:
             self._callback(output)
             self._record_success()
         except Exception as e:
-            logger.error("Fetch failed: %s", e)
+            logger.warning("Fetch failed: %s", e)
             self._record_failure()
 
     def _record_success(self) -> None:
@@ -80,7 +80,7 @@ class StateFetcher:
         self._failure_count = 0
         if not self._available:
             self._available = True
-            logger.info("Fetcher is now available")
+            logger.debug("Fetcher is now available")
             if self._availability_callback:
                 self._availability_callback(True)
 
@@ -159,5 +159,5 @@ class SystemFetcher(StateFetcher):
             self._callback(result)
             self._record_success()
         except Exception as e:
-            logger.error("System fetch failed: %s", e)
+            logger.warning("System fetch failed: %s", e)
             self._record_failure()

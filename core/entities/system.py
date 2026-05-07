@@ -623,5 +623,5 @@ def create_system_entities(
                 )
             )
 
-    logger.info("Created %d system entities", len(entities))
+    logger.debug("Created %d system entities", len(entities))
     return entities

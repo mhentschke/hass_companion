@@ -14,20 +14,10 @@ from core.config import ConfigError, load_config
 from core.discovery import clean_discovery
 from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
+from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
 from core.mqtt import MQTTReconnectionManager
 
 logger = logging.getLogger(__name__)
-
-
-def setup_logging(level_name: str = "INFO") -> None:
-    """Configure logging with the given level."""
-    level = getattr(logging, level_name.upper(), None)
-    if not isinstance(level, int):
-        level = logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
 
 
 def validate_config(config_path: str) -> int:
@@ -217,7 +207,7 @@ async def run_app(config_path: str) -> None:
 
     # Set up MQTT reconnection manager using the shared client
     reconnection_manager = MQTTReconnectionManager(shared_client, entities)
-    logger.info("MQTT reconnection manager initialized")
+    logger.debug("MQTT reconnection manager initialized")
 
     def signal_handler():
         logger.info("Shutdown signal received")

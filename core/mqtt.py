@@ -66,7 +66,7 @@ class MQTTReconnectionManager:
     async def _reconnect_loop(self) -> None:
         """Attempt reconnection with exponential backoff until success or shutdown."""
         while not self._shutdown.is_set():
-            logger.info("Attempting MQTT reconnection (backoff: %.1fs)", self._backoff)
+            logger.debug("Attempting MQTT reconnection (backoff: %.1fs)", self._backoff)
             try:
                 self._client.reconnect()
                 # Give paho-mqtt a moment to establish the connection
@@ -81,7 +81,7 @@ class MQTTReconnectionManager:
                 logger.warning("MQTT reconnection failed: %s", e)
 
             # Wait with backoff before next attempt
-            logger.info("Retrying MQTT reconnection in %.1fs", self._backoff)
+            logger.debug("Retrying MQTT reconnection in %.1fs", self._backoff)
             try:
                 await asyncio.wait_for(self._shutdown.wait(), timeout=self._backoff)
                 return  # Shutdown was set during wait
@@ -93,7 +93,7 @@ class MQTTReconnectionManager:
 
     async def _republish_all(self) -> None:
         """Re-publish discovery and last known state for all entities."""
-        logger.info("Republishing discovery and state for %d entities", len(self._entities))
+        logger.debug("Republishing discovery and state for %d entities", len(self._entities))
         for entity in self._entities:
             if hasattr(entity, "republish"):
                 try:
