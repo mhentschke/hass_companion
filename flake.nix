@@ -7,13 +7,15 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python312;
         pythonPkgs = python.pkgs;
       in
       {
+        packages.default = pkgs.callPackage ./nix/package.nix {};
+
         devShells.default = pkgs.mkShell {
           name = "hass-companion-dev";
 
@@ -45,5 +47,8 @@
           '';
         };
       }
-    );
+    )) // {
+      # NixOS module (system-independent, outside eachDefaultSystem)
+      # nixosModules.default = import ./nix/module.nix;
+    };
 }
