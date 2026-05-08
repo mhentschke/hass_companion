@@ -225,9 +225,9 @@ class ReloadManager:
         return ""
 
     def _clear_discovery(self, entity: BaseEntity) -> None:
-        """Publish empty retained message to entity's discovery topic to deregister from HA.
+        """Publish empty retained messages to entity's discovery and availability topics.
 
-        Uses the shared MQTT client from mqtt_settings to publish empty payloads.
+        Removes the entity from HA and cleans up stale retained availability messages.
         """
         try:
             client = self._mqtt_settings.client
@@ -241,12 +241,18 @@ class ReloadManager:
                     if topic:
                         client.publish(topic, "", retain=True)
                         logger.debug("Cleared discovery topic: %s", topic)
-            # For single Entity, clear its discovery topic
+                    avail_topic = getattr(ha_entity, "availability_topic", None)
+                    if avail_topic:
+                        client.publish(avail_topic, "", retain=True)
+            # For single Entity, clear its discovery and availability topics
             elif hasattr(entity, "_ha_entity") and entity._ha_entity:
                 ha_entity = entity._ha_entity
                 topic = getattr(ha_entity, "config_topic", None)
                 if topic:
                     client.publish(topic, "", retain=True)
                     logger.debug("Cleared discovery topic: %s", topic)
+                avail_topic = getattr(ha_entity, "availability_topic", None)
+                if avail_topic:
+                    client.publish(avail_topic, "", retain=True)
         except Exception as e:
             logger.warning("Failed to clear discovery for entity: %s", e)

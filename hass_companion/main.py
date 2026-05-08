@@ -140,16 +140,30 @@ def _load_entities_via_factory(
 
 
 def create_shared_mqtt_client(app_config) -> mqtt.Client:
-    """Create a single shared paho-mqtt client for all entities."""
+    """Create a single shared paho-mqtt client for all entities.
+
+    Configures LWT (Last Will and Testament) so the broker publishes "offline"
+    to the device status topic if the client disconnects unexpectedly.
+    """
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if app_config.mqtt.username:
         client.username_pw_set(app_config.mqtt.username, app_config.mqtt.password)
+
+    # Set LWT before connect — broker publishes this on unexpected disconnect
+    status_topic = f"hmd/{app_config.hass.device_id}/status"
+    client.will_set(status_topic, "offline", qos=1, retain=True)
+
     client.connect(app_config.mqtt.host, app_config.mqtt.port)
     client.loop_start()
+
+    # Publish online (retained) — overrides any previous LWT "offline"
+    client.publish(status_topic, "online", qos=1, retain=True)
+
     logger.info(
-        "Shared MQTT client connected to %s:%d",
+        "Shared MQTT client connected to %s:%d (status: %s)",
         app_config.mqtt.host,
         app_config.mqtt.port,
+        status_topic,
     )
     return client
 
@@ -170,6 +184,12 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
     # Clean stale discovery messages if configured
     if app_config.mqtt.clean_start:
         clean_discovery(shared_client, app_config.hass.device_name)
+
+    # Configure device status topic for entity availability (must be before entity creation)
+    from core.ha_entities import configure_device_status_topic
+
+    device_status_topic = f"hmd/{app_config.hass.device_id}/status"
+    configure_device_status_topic(device_status_topic)
 
     mqtt_settings = HASettings.MQTT(
         host=app_config.mqtt.host,
@@ -384,6 +404,9 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+
+    # Publish offline before disconnecting (graceful shutdown)
+    shared_client.publish(device_status_topic, "offline", qos=1, retain=True)
 
     # Disconnect the shared MQTT client
     shared_client.disconnect()
