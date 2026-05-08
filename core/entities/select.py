@@ -32,12 +32,9 @@ class Select(InteractiveEntity):
     def _create_ha_entity(self):
         """Create HA select entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import (
-            Select as HASelect,
-        )
-        from ha_mqtt_discoverable.sensors import (
-            SelectInfo as HASelectInfo,
-        )
+        from ha_mqtt_discoverable.sensors import SelectInfo as HASelectInfo
+
+        from core.ha_entities import Select as HASelect
 
         options = list(self._state_map.keys()) if self._state_map else []
         entity_info = HASelectInfo(

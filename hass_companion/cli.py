@@ -69,8 +69,31 @@ def main() -> None:
     if args.dry_run:
         sys.exit(dry_run(args.config))
 
+    # Acquire single-instance lock before starting the app
+    from core.config import ConfigError, load_config
+    from core.lockfile import InstanceAlreadyRunning, SingleInstanceLock
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    try:
+        app_config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    lock = SingleInstanceLock(device_id=app_config.hass.device_id)
+    try:
+        lock.acquire()
+    except InstanceAlreadyRunning as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
     try:
         asyncio.run(run_app(args.config, watch_config=args.watch_config))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        lock.release()

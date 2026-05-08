@@ -111,6 +111,13 @@ class MQTTReconnectionManager:
                     entity.republish()
                 except Exception as e:
                     logger.warning("Failed to republish entity: %s", e)
+        # Also republish config_status_sensor if attached
+        config_status = getattr(self, "_config_status_sensor", None)
+        if config_status and hasattr(config_status, "republish"):
+            try:
+                config_status.republish()
+            except Exception as e:
+                logger.warning("Failed to republish config status sensor: %s", e)
 
     def stop(self) -> None:
         """Signal the reconnection manager to stop."""

@@ -1,0 +1,15 @@
+mqtt:
+  host: localhost
+  port: ${TEST_MQTT_PORT:1883}
+
+hass:
+  device_name: Reload Test Device
+  device_id: reload_test_device
+
+entities:
+  sensors:
+    - name: Base Sensor
+      id: base_sensor
+      type: command
+      command: "echo 100"
+      polling_interval: 1

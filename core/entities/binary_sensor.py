@@ -46,12 +46,9 @@ class BinarySensor(Sensor):
     def _create_ha_entity(self):
         """Create HA binary sensor entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import (
-            BinarySensor as HABinarySensor,
-        )
-        from ha_mqtt_discoverable.sensors import (
-            BinarySensorInfo as HABinarySensorInfo,
-        )
+        from ha_mqtt_discoverable.sensors import BinarySensorInfo as HABinarySensorInfo
+
+        from core.ha_entities import BinarySensor as HABinarySensor
 
         entity_info = HABinarySensorInfo(
             name=self._config.name,
@@ -82,12 +79,9 @@ class CommandBinarySensor(BinarySensor):
     def _create_ha_entity(self):
         """Create HA binary sensor entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import (
-            BinarySensor as HABinarySensor,
-        )
-        from ha_mqtt_discoverable.sensors import (
-            BinarySensorInfo as HABinarySensorInfo,
-        )
+        from ha_mqtt_discoverable.sensors import BinarySensorInfo as HABinarySensorInfo
+
+        from core.ha_entities import BinarySensor as HABinarySensor
 
         entity_info = HABinarySensorInfo(
             name=self._config.name,

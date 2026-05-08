@@ -71,12 +71,9 @@ class CommandSensor(Sensor):
     def _create_ha_entity(self):
         """Create HA sensor entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import (
-            Sensor as HASensor,
-        )
-        from ha_mqtt_discoverable.sensors import (
-            SensorInfo as HASensorInfo,
-        )
+        from ha_mqtt_discoverable.sensors import SensorInfo as HASensorInfo
+
+        from core.ha_entities import Sensor as HASensor
 
         entity_info = HASensorInfo(
             name=self._config.name,

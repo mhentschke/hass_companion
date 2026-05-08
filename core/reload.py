@@ -27,6 +27,7 @@ class ReloadResult:
     added: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     updated: list[str] = field(default_factory=list)
+    restart_reasons: list[str] = field(default_factory=list)
     error: str | None = None
 
 
@@ -82,17 +83,21 @@ class ReloadManager:
                 entity.stop()
                 self._clear_discovery(entity)
 
-        # 4. Stop updated entities (old instances)
+        # 4. Stop updated entities (old instances) and clear their discovery
         for entity_type, entity_id, _new_cfg in diff.to_update:
             key = (entity_type, entity_id)
             entity = current_registry.get(key)
             if entity:
                 logger.debug("Stopping updated entity: %s/%s", entity_type, entity_id)
                 entity.stop()
+                self._clear_discovery(entity)
 
         # 5. Create new entity instances for added + updated
         created: dict[tuple[str, str], BaseEntity] = {}
         try:
+            # Update hass-level settings from new config before creating entities
+            self._sub_devices = new_config.hass.sub_devices
+            self._device_name = new_config.hass.device_name
             created.update(self._create_entities_from_config(new_config, diff))
         except Exception as e:
             # Roll back: stop any partially created entities
@@ -127,6 +132,7 @@ class ReloadManager:
             added=added_names,
             removed=removed_names,
             updated=updated_names,
+            restart_reasons=diff.restart_reasons,
         )
 
     def _resolve_device(self, entity_config) -> Any:
@@ -184,8 +190,8 @@ class ReloadManager:
                 new_config.entities.system,
                 self._mqtt_settings,
                 self._ha_device,
-                sub_devices=self._sub_devices,
-                device_name=self._device_name,
+                sub_devices=new_config.hass.sub_devices,
+                device_name=new_config.hass.device_name,
             )
             for entity in system_entities:
                 entity_id = getattr(entity, "_base_id", None) or getattr(entity, "_system_id", "unknown")
@@ -231,14 +237,16 @@ class ReloadManager:
             # For CompositeEntity, clear all sub-entity discovery topics
             if hasattr(entity, "_ha_entities") and entity._ha_entities:
                 for ha_entity in entity._ha_entities.values():
-                    if hasattr(ha_entity, "_entity") and hasattr(ha_entity._entity, "config_topic"):
-                        topic = ha_entity._entity.config_topic
+                    topic = getattr(ha_entity, "config_topic", None)
+                    if topic:
                         client.publish(topic, "", retain=True)
+                        logger.debug("Cleared discovery topic: %s", topic)
             # For single Entity, clear its discovery topic
             elif hasattr(entity, "_ha_entity") and entity._ha_entity:
                 ha_entity = entity._ha_entity
-                if hasattr(ha_entity, "_entity") and hasattr(ha_entity._entity, "config_topic"):
-                    topic = ha_entity._entity.config_topic
+                topic = getattr(ha_entity, "config_topic", None)
+                if topic:
                     client.publish(topic, "", retain=True)
+                    logger.debug("Cleared discovery topic: %s", topic)
         except Exception as e:
             logger.warning("Failed to clear discovery for entity: %s", e)

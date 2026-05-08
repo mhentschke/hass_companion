@@ -30,12 +30,9 @@ class Switch(InteractiveEntity):
     def _create_ha_entity(self):
         """Create HA switch entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import (
-            Switch as HASwitch,
-        )
-        from ha_mqtt_discoverable.sensors import (
-            SwitchInfo as HASwitchInfo,
-        )
+        from ha_mqtt_discoverable.sensors import SwitchInfo as HASwitchInfo
+
+        from core.ha_entities import Switch as HASwitch
 
         entity_info = HASwitchInfo(
             name=self._config.name,

@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 class ConfigStatusSensor(BaseEntity):
     """Built-in sensor that reports config reload status to Home Assistant.
 
-    State: 'valid' | 'error'
+    State: 'valid' | 'error' | 'restart_required'
     Attributes: last_reload, last_error, last_error_time,
-                entities_added, entities_removed, entities_updated
+                entities_added, entities_removed, entities_updated,
+                restart_reasons
     """
 
     def __init__(self, mqtt_settings, device, *, device_id: str, _ha_entity=None):
@@ -33,6 +34,7 @@ class ConfigStatusSensor(BaseEntity):
             "entities_added": 0,
             "entities_removed": 0,
             "entities_updated": 0,
+            "restart_reasons": [],
         }
         self._ha_entity = _ha_entity or self._create_ha_entity()
         # Publish initial state
@@ -72,6 +74,20 @@ class ConfigStatusSensor(BaseEntity):
         self._attributes["entities_added"] = added
         self._attributes["entities_removed"] = removed
         self._attributes["entities_updated"] = updated
+        self._attributes["restart_reasons"] = []
+        self._publish_state()
+
+    def set_restart_required(
+        self, added: int, removed: int, updated: int, reasons: list[str]
+    ) -> None:
+        """Mark config as requiring restart for some changes to take effect."""
+        self._state = "restart_required"
+        self._attributes["last_reload"] = datetime.now(timezone.utc).isoformat()
+        self._attributes["last_error"] = None
+        self._attributes["entities_added"] = added
+        self._attributes["entities_removed"] = removed
+        self._attributes["entities_updated"] = updated
+        self._attributes["restart_reasons"] = reasons
         self._publish_state()
 
     def set_error(self, error_message: str) -> None:

@@ -16,7 +16,6 @@ from core.entities.base import BaseEntity
 from core.entities.config_status import ConfigStatusSensor
 from core.entities.system import create_system_entities
 from core.factory import create_entity as factory_create_entity
-from core.logging import setup_logging  # noqa: F401 — re-exported for CLI
 from core.mqtt import MQTTReconnectionManager
 from core.reload import ReloadManager
 from core.watcher import ConfigFileWatcher
@@ -115,10 +114,6 @@ def dry_run(config_path: str) -> int:
 
     print("-" * 60)
     print(f"Total: {count} entities")
-    print("No MQTT connection was made.")
-    return 0
-
-    print("-" * 60)
     print("No MQTT connection was made.")
     return 0
 
@@ -237,7 +232,9 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
     reload_event = asyncio.Event()
 
     # Set up MQTT reconnection manager using the shared client and registry
+    # Include config_status_sensor in the reconnection cycle
     reconnection_manager = MQTTReconnectionManager(shared_client, entity_registry)
+    reconnection_manager._config_status_sensor = config_status_sensor
     logger.debug("MQTT reconnection manager initialized")
 
     # Set up ReloadManager
@@ -351,11 +348,21 @@ async def run_app(config_path: str, watch_config: bool = False) -> None:
                 for name in result.updated:
                     logger.debug("  Updated: %s", name)
 
-                config_status_sensor.set_valid(
-                    added=len(result.added),
-                    removed=len(result.removed),
-                    updated=len(result.updated),
-                )
+                if result.restart_reasons:
+                    for reason in result.restart_reasons:
+                        logger.warning("  Restart required: %s", reason)
+                    config_status_sensor.set_restart_required(
+                        added=len(result.added),
+                        removed=len(result.removed),
+                        updated=len(result.updated),
+                        reasons=result.restart_reasons,
+                    )
+                else:
+                    config_status_sensor.set_valid(
+                        added=len(result.added),
+                        removed=len(result.removed),
+                        updated=len(result.updated),
+                    )
             else:
                 logger.warning("Reload failed: %s", result.error)
                 config_status_sensor.set_error(result.error)

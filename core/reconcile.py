@@ -15,12 +15,14 @@ class EntityDiff:
 
     Each entry in to_add/to_remove/to_update is (entity_type, entity_id, config_data).
     unchanged contains entity_ids that did not change.
+    restart_reasons lists changes that require a full restart to take effect.
     """
 
     to_add: list[tuple[str, str, Any]] = field(default_factory=list)
     to_remove: list[tuple[str, str]] = field(default_factory=list)
     to_update: list[tuple[str, str, Any]] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
+    restart_reasons: list[str] = field(default_factory=list)
 
 
 def _sanitize_id(name: str) -> str:
@@ -90,6 +92,15 @@ def _extract_system_sections(system_config: SystemConfig | None) -> dict[str, An
     return sections
 
 
+def _detect_device_only_changes(
+    old_config: dict, new_config: dict
+) -> bool:
+    """Check if the only difference between two entity configs is the device key."""
+    old_copy = {k: v for k, v in old_config.items() if k != "device"}
+    new_copy = {k: v for k, v in new_config.items() if k != "device"}
+    return old_copy == new_copy and old_config.get("device") != new_config.get("device")
+
+
 class EntityReconciler:
     """Compares two AppConfig instances and produces an EntityDiff."""
 
@@ -99,8 +110,23 @@ class EntityReconciler:
 
         Regular entities are compared individually by (type, id) key.
         System entities are compared at the section level.
+        Changes that only affect device assignment (sub_devices, device_name,
+        entity device key) are flagged as restart_reasons rather than updates.
         """
         result = EntityDiff()
+
+        # --- Detect hass-level changes that affect device assignment ---
+        sub_devices_changed = old_config.hass.sub_devices != new_config.hass.sub_devices
+        device_name_changed = old_config.hass.device_name != new_config.hass.device_name
+
+        if sub_devices_changed:
+            result.restart_reasons.append(
+                f"hass.sub_devices changed ({old_config.hass.sub_devices} → {new_config.hass.sub_devices})"
+            )
+        if device_name_changed:
+            result.restart_reasons.append(
+                f"hass.device_name changed ('{old_config.hass.device_name}' → '{new_config.hass.device_name}')"
+            )
 
         # --- Regular entities ---
         old_entities = _extract_regular_entities(old_config.entities)
@@ -123,7 +149,13 @@ class EntityReconciler:
         for key in old_keys & new_keys:
             entity_type, entity_id = key
             if old_entities[key] != new_entities[key]:
-                result.to_update.append((entity_type, entity_id, new_entities[key]))
+                # Check if only the device key changed
+                if _detect_device_only_changes(old_entities[key], new_entities[key]):
+                    result.restart_reasons.append(
+                        f"{entity_type}/{entity_id}: device changed"
+                    )
+                else:
+                    result.to_update.append((entity_type, entity_id, new_entities[key]))
             else:
                 result.unchanged.append(entity_id)
 
@@ -145,6 +177,7 @@ class EntityReconciler:
         # Possibly updated sections
         for section in old_section_keys & new_section_keys:
             if old_sections[section] != new_sections[section]:
+                # Real config change — recreate
                 result.to_update.append(("system", section, new_sections[section]))
             else:
                 result.unchanged.append(section)
