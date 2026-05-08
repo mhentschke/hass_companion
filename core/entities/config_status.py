@@ -37,13 +37,16 @@ class ConfigStatusSensor(BaseEntity):
             "restart_reasons": [],
         }
         self._ha_entity = _ha_entity or self._create_ha_entity()
-        # Publish initial state
+        # Publish initial availability and state
+        self._ha_entity.set_availability(True)
         self._publish_state()
 
     def _create_ha_entity(self):
         """Create the HA sensor entity via ha-mqtt-discoverable."""
         from ha_mqtt_discoverable import Settings as HASettings
-        from ha_mqtt_discoverable.sensors import Sensor as HASensor, SensorInfo as HASensorInfo
+        from ha_mqtt_discoverable.sensors import SensorInfo as HASensorInfo
+
+        from core.ha_entities import Sensor as HASensor
 
         entity_info = HASensorInfo(
             name="Config Status",
@@ -51,7 +54,7 @@ class ConfigStatusSensor(BaseEntity):
             device=self._device,
             icon="mdi:file-check",
         )
-        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info)
+        settings = HASettings(mqtt=self._mqtt_settings, entity=entity_info, manual_availability=True)
         return HASensor(settings)
 
     def _publish_state(self) -> None:

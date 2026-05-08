@@ -48,12 +48,25 @@ def get_device_status_topic() -> str | None:
 
 
 class _RetainedAvailabilityMixin:
-    """Mixin providing retained availability and hybrid availability config.
+    """Mixin providing retained state/availability and hybrid availability config.
 
     Overrides:
-    - set_availability(): publishes with retain=True
+    - _update_state(): defaults retain=True for state and availability messages.
+      This prevents race conditions where HA subscribes to topics after the message
+      was published. Retained messages are replayed to new subscribers by the broker.
     - generate_config(): emits availability list (device + entity) with mode=all
     """
+
+    def _update_state(self, state, topic=None, last_reset=None, retain=True, force_update=False):
+        """Override to default retain=True for all state publishes.
+
+        The upstream library defaults retain=False, which causes HA to miss messages
+        published before it subscribes to the topic (race condition on entity creation).
+        Retained messages solve this: the broker replays them to new subscribers.
+        """
+        return super()._update_state(
+            state, topic=topic, last_reset=last_reset, retain=retain, force_update=force_update
+        )
 
     def set_availability(self, availability: bool) -> None:
         if not hasattr(self, "availability_topic"):
