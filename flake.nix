@@ -49,6 +49,6 @@
       }
     )) // {
       # NixOS module (system-independent, outside eachDefaultSystem)
-      # nixosModules.default = import ./nix/module.nix;
+      nixosModules.default = import ./nix/module.nix;
     };
 }
