@@ -1,0 +1,45 @@
+FROM fedora:41
+
+ENV container=docker
+
+RUN dnf install -y \
+    python3 python3-pip \
+    systemd dbus \
+    mosquitto \
+    && dnf clean all
+
+# Remove unnecessary systemd units
+RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == systemd-tmpfiles-setup.service ] || rm -f $i; done); \
+    rm -f /lib/systemd/system/multi-user.target.wants/*; \
+    rm -f /etc/systemd/system/*.wants/*; \
+    rm -f /lib/systemd/system/local-fs.target.wants/*; \
+    rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
+    rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
+    rm -f /lib/systemd/system/basic.target.wants/*
+
+# Copy project
+WORKDIR /app
+COPY . /app/
+
+# Install hass-companion in a venv
+RUN python3 -m venv /opt/hass-companion && \
+    /opt/hass-companion/bin/pip install --upgrade pip && \
+    /opt/hass-companion/bin/pip install .
+
+# Make binary accessible system-wide
+RUN ln -s /opt/hass-companion/bin/hass-companion /usr/local/bin/hass-companion
+
+# Copy test config and env
+RUN mkdir -p /etc/hass-companion
+COPY tests/service-install/test-config.yaml /etc/hass-companion/config.yaml
+RUN printf 'HA_MQTT_HOST=mosquitto\nHA_MQTT_PORT=1883\n' > /etc/hass-companion/.env
+
+# Copy test script
+COPY tests/service-install/test-service.sh /test-service.sh
+RUN chmod +x /test-service.sh
+
+STOPSIGNAL SIGRTMIN+3
+VOLUME ["/sys/fs/cgroup"]
+
+# Boot into systemd
+CMD ["/usr/lib/systemd/systemd"]

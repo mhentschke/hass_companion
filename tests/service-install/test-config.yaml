@@ -1,0 +1,15 @@
+mqtt:
+  host: ${HA_MQTT_HOST}
+  port: ${HA_MQTT_PORT}
+
+hass:
+  device_name: Service Test Device
+  device_id: service_test_device
+
+entities:
+  sensors:
+    - name: Echo Sensor
+      id: echo_sensor
+      type: command
+      command: "echo 42"
+      polling_interval: 2

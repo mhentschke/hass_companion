@@ -124,22 +124,16 @@ pipx install .
 
 #### NixOS
 
-With flakes enabled:
+NixOS users should use the declarative NixOS module for installation and service management. See the [NixOS Module](#nixos-module) section below for full instructions.
+
+To run the package directly without installing as a service:
 
 ```bash
-git clone https://github.com/mhentschke/hass_companion.git
-cd hass_companion
-nix develop  # enters dev shell with all dependencies
-pip install -e .
-```
+# Run directly via flake
+nix run github:mhentschke/hass_companion -- --config /path/to/config.yaml
 
-Without flakes (using `shell.nix`):
-
-```bash
-git clone https://github.com/mhentschke/hass_companion.git
-cd hass_companion
-nix-shell  # enters dev shell
-pip install -e .
+# Or install to profile
+nix profile install github:mhentschke/hass_companion
 ```
 
 #### macOS
@@ -167,79 +161,179 @@ python3 -m venv .venv
 
 ## Service Setup
 
-### systemd (Linux)
+### CLI Service Commands (Linux & macOS)
 
-A service unit file is provided at `contrib/hass-companion.service`.
+The `hass-companion service` subcommand automates service installation. It detects your platform and generates the appropriate service definition.
+
+```
+hass-companion service install [--user] [--config PATH]
+hass-companion service uninstall [--user]
+hass-companion service status
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `install` | Generate and install the service definition |
+| `uninstall` | Stop, disable, and remove the service |
+| `status` | Check if the service is installed, enabled, and running |
+
+| Flag | Description |
+|------|-------------|
+| `--user` | Install as a user-level service (Linux only, uses `~/.config/systemd/user/`) |
+| `--config PATH` | Path to config.yaml to embed in the service definition |
+
+#### System-level install (Linux, requires root)
 
 ```bash
-# Copy config and env to a system location
-sudo mkdir -p /etc/hass-companion
-sudo cp config.yaml /etc/hass-companion/
-sudo cp .env /etc/hass-companion/
+sudo hass-companion service install --config /etc/hass-companion/config.yaml
+```
 
-# Install the service
+This creates `/etc/systemd/system/hass-companion.service`, runs `systemctl daemon-reload`, and prints enable/start instructions.
+
+#### User-level install (Linux, no root needed)
+
+```bash
+hass-companion service install --user --config ~/.config/hass-companion/config.yaml
+```
+
+This creates `~/.config/systemd/user/hass-companion.service`.
+
+#### macOS install
+
+```bash
+hass-companion service install --config /usr/local/etc/hass-companion/config.yaml
+```
+
+This creates `~/Library/LaunchAgents/com.hass-companion.plist` and loads it via `launchctl`.
+
+#### Uninstall
+
+```bash
+# Linux system-level
+sudo hass-companion service uninstall
+
+# Linux user-level
+hass-companion service uninstall --user
+
+# macOS
+hass-companion service uninstall
+```
+
+#### Check status
+
+```bash
+hass-companion service status
+```
+
+Reports whether the service is installed, enabled, and currently running. Exits with code 1 if not installed.
+
+#### NixOS note
+
+On NixOS, `hass-companion service install` is intentionally blocked. NixOS users should use the declarative NixOS module instead (see below).
+
+### NixOS Module
+
+The project provides a NixOS module that declaratively installs hass-companion and runs it as a systemd service.
+
+#### Flake-based usage
+
+Add hass-companion as a flake input and import the module:
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    hass-companion.url = "github:mhentschke/hass_companion";
+  };
+
+  outputs = { nixpkgs, hass-companion, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        hass-companion.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+Then in your NixOS configuration:
+
+```nix
+# configuration.nix
+{
+  services.hass-companion = {
+    enable = true;
+    configFile = ./hass-companion/config.yaml;
+    environmentFile = "/run/secrets/hass-companion-env";  # e.g., sops-nix or agenix path
+    logLevel = "INFO";
+    watchConfig = true;
+  };
+}
+```
+
+#### Non-flake usage (fetchTarball)
+
+For traditional NixOS configurations without flakes:
+
+```nix
+# configuration.nix
+let
+  hass-companion = builtins.fetchTarball {
+    url = "https://github.com/mhentschke/hass_companion/archive/main.tar.gz";
+    # Replace with actual hash after first build:
+    # sha256 = "...";
+  };
+in
+{
+  imports = [ "${hass-companion}/nix/module.nix" ];
+
+  services.hass-companion = {
+    enable = true;
+    configFile = /etc/hass-companion/config.yaml;
+    environmentFile = /etc/hass-companion/.env;
+  };
+}
+```
+
+#### Module Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | bool | `false` | Enable the hass-companion service |
+| `package` | package | built from source | The hass-companion package to use |
+| `configFile` | path | — (required) | Path to the hass-companion `config.yaml` |
+| `environmentFile` | path or null | `null` | Path to environment file with MQTT credentials (`.env`, sops-nix secret, etc.) |
+| `logLevel` | enum | `"INFO"` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `watchConfig` | bool | `false` | Watch config file for changes and reload automatically |
+
+When enabled, the module creates a systemd service with:
+- `After=network-online.target` (waits for network)
+- `Restart=on-failure` with 10s delay
+- `EnvironmentFile` loaded when `environmentFile` is set
+- `--watch-config` flag passed when `watchConfig` is true
+
+### Manual Service Setup
+
+If you prefer not to use the CLI commands, template service files are available in the `contrib/` directory.
+
+#### systemd (Linux)
+
+```bash
 sudo cp contrib/hass-companion.service /etc/systemd/system/
+# Edit ExecStart path and config path as needed
 sudo systemctl daemon-reload
 sudo systemctl enable --now hass-companion
 ```
 
-If installed via pipx, ensure the pipx bin directory is on PATH for the service user, or edit the service to use the full path:
-
-```ini
-ExecStart=/home/<user>/.local/bin/hass-companion --config /etc/hass-companion/config.yaml
-```
-
-If using a virtualenv:
-
-```ini
-ExecStart=/path/to/venv/bin/hass-companion --config /etc/hass-companion/config.yaml
-```
-
-Check status:
+#### launchd (macOS)
 
 ```bash
-sudo systemctl status hass-companion
-journalctl -u hass-companion -f
-```
-
-### launchd (macOS)
-
-A plist file is provided at `contrib/com.hass-companion.plist`.
-
-```bash
-# Copy config to a system location
-mkdir -p /usr/local/etc/hass-companion
-cp config.yaml /usr/local/etc/hass-companion/
-
-# Create log directory
-mkdir -p /usr/local/var/log
-
-# Install the launch agent
 cp contrib/com.hass-companion.plist ~/Library/LaunchAgents/
+# Edit ProgramArguments path and config path as needed
 launchctl load ~/Library/LaunchAgents/com.hass-companion.plist
-```
-
-If installed via pipx, update the plist to use the full path:
-
-```xml
-<key>ProgramArguments</key>
-<array>
-    <string>/Users/<user>/.local/bin/hass-companion</string>
-    <string>--config</string>
-    <string>/usr/local/etc/hass-companion/config.yaml</string>
-</array>
-```
-
-Check logs:
-
-```bash
-tail -f /usr/local/var/log/hass-companion.log
-```
-
-To stop:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.hass-companion.plist
 ```
 
 ## Configuration
